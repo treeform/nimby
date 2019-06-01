@@ -1,6 +1,10 @@
+![Nimby Logo](docs/nimbyLogo.png)
+
 # Nimby
 
-Nimby is a very simple package manager for nim language. It is a very stripped down package manager under 200 lines of code.
+Nimby is a very simple and unofficial package manager for nim language. It is a very stripped down package manager under 200 lines of code.
+
+⚠️ Warning do not use in production. This is an idea-only software to spark converstions about packadge managers. ⚠️
 
 
 ## Install
