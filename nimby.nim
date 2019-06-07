@@ -80,13 +80,17 @@ proc removeCfgPath(path: string) =
   writeFile(currentDir / "nim.cfg", nimCfg.replace(pathLine, ""))
 
 
-proc addGitSubmodule(name, url: string) =
-  ## Ads a library to the .gitmodules file (if it exists)
-  let entry = &"""[submodule "{name}"]
-path = libs/{name}
-url = {url}
+proc gitSubmoduleText(name, url: string): string =
+  return &"""[submodule "libs/{name}"]
+    path = libs/{name}
+    url = {url}
 
 """
+
+proc addGitSubmodule(name, url: string) =
+  ## Ads a library to the .gitmodules file (if it exists)
+  let entry = gitSubmoduleText(name, url)
+
   if existsFile(currentDir / ".gitmodules"):
     var gitModules = readFile(currentDir / ".gitmodules")
     if entry notin gitModules:
@@ -98,11 +102,7 @@ url = {url}
 
 proc removeGitSubmodule(name, url: string) =
   ## Ads a library to the .gitmodules file (if it exists)
-  let entry = &"""[submodule "{name}"]
-path = libs/{name}
-url = {url}
-
-"""
+  let entry = gitSubmoduleText(name, url)
   if existsFile(currentDir / ".gitmodules"):
     var gitModules = readFile(currentDir / ".gitmodules")
     writeFile(currentDir / ".gitmodules", gitModules.replace(entry, ""))
