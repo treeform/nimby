@@ -129,6 +129,31 @@ proc installRequriements(nimby: NimbyFile) =
     installRequriement(lib.name, lib.url)
 
 
+proc updateRequriement(name, url: string) =
+  ## Install a spesific requirement
+  if not existsDir(currentDir / "libs"):
+    createDir(currentDir / "libs")
+  if not existsDir(currentDir / "libs" / name):
+    var cmd = &"git clone {url} libs/{name}"
+    if execShellCmd(cmd) != 0:
+      quit(&"Failed to clone {name} form {url}")
+  else:
+    var cmd = &"cd libs/{name}; git pull"
+    if execShellCmd(cmd) != 0:
+      quit(&"Failed to update {name} form {url}")
+  if existsDir(currentDir / "libs" / name / "src"):
+    addCfgPath("libs" / name / "src")
+  else:
+    addCfgPath("libs" / name)
+  addGitSubmodule(name, url)
+
+
+proc updateRequriements(nimby: NimbyFile) =
+  ## Install all requirements in the nimby file
+  for lib in nimby.requires:
+    updateRequriement(lib.name, lib.url)
+
+
 proc removeGitDir(path: string) =
   removeDir(path)
 
@@ -154,6 +179,21 @@ case subcommand
   of "":
     # no filename has been given, so we show the help:
     writeHelp()
+  of "update":
+    var nimbyFile = readNimbyFile()
+    var name = url
+    if url != "":
+      var found = false
+      for lib in nimbyFile.requires:
+        if lib.name == name:
+          updateRequriement(lib.name, lib.url)
+          found = true
+      if not found:
+        quit(&"Library with same name \"{name}\" not found")
+    else:
+      nimbyFile.updateRequriements()
+      writeFile(currentDir / ".nimby", pretty %nimbyFile)
+
   of "install":
     var nimbyFile = readNimbyFile()
 
@@ -166,7 +206,7 @@ case subcommand
       for lib in nimbyFile.requires:
         if lib.name == name:
           if lib.url == url:
-            quit(&"Library at {url} alreayd installed.")
+            quit(&"Library at {url} already installed.")
           else:
             quit(&"Library with same name \"{name}\" already exists with different ({url}) url.")
 
