@@ -138,9 +138,12 @@ proc updateRequriement(name, url: string) =
     if execShellCmd(cmd) != 0:
       quit(&"Failed to clone {name} form {url}")
   else:
-    var cmd = &"cd libs/{name}; git pull"
+    echo "* ", name
+    setCurrentDir(currentDir / "libs" / name)
+    var cmd = "git pull"
     if execShellCmd(cmd) != 0:
       quit(&"Failed to update {name} form {url}")
+    setCurrentDir(currentDir)
   if existsDir(currentDir / "libs" / name / "src"):
     addCfgPath("libs" / name / "src")
   else:
