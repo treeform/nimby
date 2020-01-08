@@ -113,7 +113,7 @@ proc installRequriement(name, url: string) =
   if not existsDir(currentDir / "libs"):
     createDir(currentDir / "libs")
   var cmd = &"git clone {url} libs/{name}"
-  if not existsDir(currentDir / "libs" / name):
+  if not existsDir(currentDir / "libs" / name) or toSeq(walkDir(currentDir / "libs" / name)).len == 0:
     if execShellCmd(cmd) != 0:
       quit(&"Failed to clone {name} form {url}")
   if existsDir(currentDir / "libs" / name / "src"):
