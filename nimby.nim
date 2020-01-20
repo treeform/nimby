@@ -2,7 +2,8 @@
 import parseopt, os, json, strformat, strutils, sequtils, httpclient, json, print, terminal
 
 
-let githubUser = "treeform"
+let config = parseJson readFile "nimby.json"
+let githubUser = config["gituser"].getStr()
 let minDir = getCurrentDir()
 
 proc cmd(command: string) =
@@ -14,16 +15,19 @@ proc error(msg: string) =
 proc writeVersion() =
   ## Writes the version of the nimby tool
   echo "0.1.0"
-  
+
 proc writeHelp() =
   ## Write the help message for the nimby tool
   echo """
 nimby - helps manage large colletion of nimble packadges in development.
-  nimby install              - installs all entries in .nimby file.
-  nimby install gitUrl       - install package via git url.
-  nimby remove packadgeName  - remove package via its name or git url.
+  nimby list              - lists all nim packages in current direclty
+    * checks for .nimble
+    * checks for git changes
+    * checks for nimble status
+    * checks for tag being installed on github
+  nimby develop           - install all pacakges with develop
+  nimby tag               - create a a git tag for all pacakges if needed
 """
-
 
 type Package = ref object
   name: string
@@ -47,36 +51,24 @@ var tag = false
 var pull = false
 
 proc walkAll() =
-  for _, dir in walkDir("."):
+  for dirKind, dir in walkDir("."):
+    if dirKind != pcDir:
+      continue
     echo "* ", dir[2..^1]
-    setCurrentDir(dir)
-    cmd "git status --porcelain=v2"
+    setCurrentDir(minDir / dir)
+
+    if dirExists(".git"):
+      cmd "git status --short"
+
     var nimbleFile = ""
     for pc, file in walkDir("."):
       if pc == pcFile and file.endsWith(".nimble"):
         nimbleFile = file
         break
-    
+
     if nimbleFile != "":
       if pull:
         cmd "git pull"
-
-      let pkgName = nimbleFile[2..^8]
-      if pkgName != dir[2..^1]:
-        echo "!!! Nimble name does not match dir name: ", nimbleFile[2..^1], " != ", dir[2..^1]
-      
-      cmd "nimble check"
-
-      if develop:
-        cmd "git status --porcelain=v2"
-        var nimbleFile = ""
-        for pc, file in walkDir("."):
-          if pc == pcFile and file.endsWith(".nimble"):
-            nimbleFile = file
-            break
-    
-        if nimbleFile != "":
-          cmd "nimble develop -y"
 
       var author, version: string
       for line in readFile(nimbleFile).split("\n"):
@@ -85,6 +77,18 @@ proc walkAll() =
         if "author" in line:
           author = line.split("=")[^1].strip()[1..^2]
       echo "   ", version
+      if author != githubUser:
+        continue
+
+      let pkgName = nimbleFile[2..^8]
+      if pkgName != dir[2..^1]:
+        echo "!!! Nimble name does not match dir name: ", nimbleFile[2..^1], " != ", dir[2..^1]
+
+      cmd "nimble check"
+
+      if develop:
+        if nimbleFile != "":
+          cmd "nimble develop -y"
 
       let package = findPackage(pkgName)
       if package == nil:
@@ -92,27 +96,23 @@ proc walkAll() =
       else:
         echo "   ", package.url
         let releaseUrl = package.url & "/releases/tag/v" & version
-        let packageUser = package.url.split("/")[^2]              
+        let packageUser = package.url.split("/")[^2]
         try:
           var client = newHttpClient()
           let good = client.getContent(releaseUrl)
-        except HttpRequestError: 
+        except HttpRequestError:
           error "   NO RELEASE!!!"
-          echo "   ", releaseUrl   
+          echo "   ", releaseUrl
           if packageUser != githubUser:
             echo "   ", "not your package, not your problem."
           else:
-            
+
             if tag:
               print "going to tag!"
               cmd "git tag v" & version
               cmd "git push origin --tags"
 
     setCurrentDir(minDir)
-
-
-
-
 
 var subcommand = ""
 var url = ""
@@ -143,7 +143,7 @@ case subcommand
     walkAll()
   of "pull":
     pull = true
-    walkAll()  
+    walkAll()
   of "tag":
     tag = true
-    walkAll()  
+    walkAll()
