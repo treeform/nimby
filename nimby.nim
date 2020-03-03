@@ -14,14 +14,15 @@ proc error(msg: string) =
 proc writeVersion() =
   ## Writes the version of the nimby tool
   echo "0.1.0"
-  
+
 proc writeHelp() =
   ## Write the help message for the nimby tool
   echo """
-nimby - helps manage large colletion of nimble packadges in development.
-  nimby install              - installs all entries in .nimby file.
-  nimby install gitUrl       - install package via git url.
-  nimby remove packadgeName  - remove package via its name or git url.
+nimby - helps manage large collection of nimble packages in development.
+  - list       list all packages currently in the folder
+  - develop    make sure all packages are linked with nimble
+  - pull       pull all updates to packages from with git
+  - tag        make sure all packages have a proper tag
 """
 
 
@@ -48,6 +49,8 @@ var pull = false
 
 proc walkAll() =
   for _, dir in walkDir("."):
+    if not existsDir(dir):
+      continue
     echo "* ", dir[2..^1]
     setCurrentDir(dir)
     cmd "git status --porcelain=v2"
@@ -56,7 +59,7 @@ proc walkAll() =
       if pc == pcFile and file.endsWith(".nimble"):
         nimbleFile = file
         break
-    
+
     if nimbleFile != "":
       if pull:
         cmd "git pull"
@@ -64,7 +67,7 @@ proc walkAll() =
       let pkgName = nimbleFile[2..^8]
       if pkgName != dir[2..^1]:
         echo "!!! Nimble name does not match dir name: ", nimbleFile[2..^1], " != ", dir[2..^1]
-      
+
       cmd "nimble check"
 
       if develop:
@@ -74,7 +77,7 @@ proc walkAll() =
           if pc == pcFile and file.endsWith(".nimble"):
             nimbleFile = file
             break
-    
+
         if nimbleFile != "":
           cmd "nimble develop -y"
 
@@ -92,21 +95,26 @@ proc walkAll() =
       else:
         echo "   ", package.url
         let releaseUrl = package.url & "/releases/tag/v" & version
-        let packageUser = package.url.split("/")[^2]              
+        let packageUser = package.url.split("/")[^2]
         try:
           var client = newHttpClient()
           let good = client.getContent(releaseUrl)
-        except HttpRequestError: 
-          error "   NO RELEASE!!!"
-          echo "   ", releaseUrl   
-          if packageUser != githubUser:
-            echo "   ", "not your package, not your problem."
-          else:
-            
-            if tag:
-              print "going to tag!"
-              cmd "git tag v" & version
-              cmd "git push origin --tags"
+        except HttpRequestError:
+          try:
+            let releaseUrl = package.url & "/releases/tag/" & version
+            var client = newHttpClient()
+            let good = client.getContent(releaseUrl)
+          except HttpRequestError:
+            error "   NO RELEASE!!!"
+            echo "   ", releaseUrl
+            if packageUser != githubUser:
+              echo "   ", "not your package, not your problem."
+            else:
+
+              if tag:
+                print "going to tag!"
+                cmd "git tag v" & version
+                cmd "git push origin --tags"
 
     setCurrentDir(minDir)
 
@@ -143,7 +151,9 @@ case subcommand
     walkAll()
   of "pull":
     pull = true
-    walkAll()  
+    walkAll()
   of "tag":
     tag = true
-    walkAll()  
+    walkAll()
+  else:
+    echo "command ", subcommand, " not supported."
