@@ -1,6 +1,5 @@
 # Nimby - helps manage large colletion of nimble packadges in development.
-import parseopt, os, json, strformat, strutils, sequtils, httpclient, json, print, terminal
-
+import httpclient, json, json, os, parseopt, strutils, terminal
 
 let config = parseJson readFile "nimby.json"
 let githubUser = config["gituser"].getStr()
@@ -82,7 +81,8 @@ proc walkAll() =
 
       let pkgName = nimbleFile[2..^8]
       if pkgName != dir[2..^1]:
-        echo "!!! Nimble name does not match dir name: ", nimbleFile[2..^1], " != ", dir[2..^1]
+        echo "!!! Nimble name does not match dir name: ",
+            nimbleFile[2..^1], " != ", dir[2..^1]
 
       cmd "nimble check"
 
@@ -108,7 +108,7 @@ proc walkAll() =
           else:
 
             if tag:
-              print "going to tag!"
+              echo "going to tag!"
               cmd "git tag v" & version
               cmd "git push origin --tags"
 
@@ -129,7 +129,6 @@ for kind, key, val in p.getopt():
     of "help", "h": writeHelp()
     of "version", "v": writeVersion()
   of cmdEnd: assert(false) # cannot happen
-
 
 case subcommand
   of "":
