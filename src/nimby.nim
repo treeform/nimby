@@ -1,5 +1,5 @@
-# Nimby - helps manage large colletion of nimble packadges in development.
-import httpclient, json, json, os, parseopt, strutils, terminal
+# Nimby helps manage a large collection of nimble packages in development.
+import httpclient, json, os, parsecfg, parseopt, strutils, terminal
 
 let config = parseJson readFile "nimby.json"
 let githubUser = config["gituser"].getStr()
@@ -12,20 +12,21 @@ proc error(msg: string) =
   styledWriteLine(stderr, fgRed, msg, resetStyle)
 
 proc writeVersion() =
-  ## Writes the version of the nimby tool
-  echo "0.1.0"
+  ## Writes the version of the nimby tool.
+  echo loadConfig("./nimby.nimble").getSectionValue("", "version")
 
 proc writeHelp() =
-  ## Write the help message for the nimby tool
+  ## Write the help message for the nimby tool.
   echo """
-nimby - helps manage large colletion of nimble packadges in development.
-  nimby list              - lists all nim packages in current direclty
+nimby - manage a large collection of nimble packages in development
+  nimby list              - lists all nim packages in the current directory
     * checks for .nimble
     * checks for git changes
     * checks for nimble status
     * checks for tag being installed on github
-  nimby develop           - install all pacakges with develop
-  nimby tag               - create a a git tag for all pacakges if needed
+  nimby develop           - make sure all packages are linked with nimble
+  nimby pull              - pull all updates to packages from with git
+  nimby tag               - create a git tag for all pacakges if needed
 """
 
 type Package = ref object
@@ -114,8 +115,7 @@ proc walkAll() =
 
     setCurrentDir(minDir)
 
-var subcommand = ""
-var url = ""
+var subcommand, url: string
 var p = initOptParser()
 for kind, key, val in p.getopt():
   case kind
@@ -132,7 +132,7 @@ for kind, key, val in p.getopt():
 
 case subcommand
   of "":
-    # no filename has been given, so we show the help:
+    # No filename has been given, so we show the help:
     writeHelp()
   of "list":
     list = true
