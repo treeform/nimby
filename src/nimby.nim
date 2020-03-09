@@ -1,8 +1,7 @@
 # Nimby helps manage a large collection of nimble packages in development.
-import httpclient, json, os, parsecfg, parseopt, strutils, terminal
+import httpclient, json, os, osproc, parsecfg, parseopt, strutils, terminal
 
-let config = parseJson readFile "nimby.json"
-let githubUser = config["gituser"].getStr()
+let githubUser = execProcess("git config --get user.email")
 let minDir = getCurrentDir()
 
 proc cmd(command: string) =
