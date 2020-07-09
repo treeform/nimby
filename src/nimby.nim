@@ -44,10 +44,12 @@ proc findPackage(name: string): Package =
     if p["name"].getStr() == name:
       return p.to(Package)
 
-var list = false
-var develop = false
-var tag = false
-var pull = false
+var
+  list = false
+  develop = false
+  tag = false
+  pull = false
+  showVersion = false
 
 proc walkAll() =
   for dirKind, dir in walkDir("."):
@@ -75,7 +77,8 @@ proc walkAll() =
           version = line.split("=")[^1].strip()[1..^2]
         if "author" in line:
           author = line.split("=")[^1].strip()[1..^2]
-      echo "   ", version
+      if showVersion:
+        echo "   ", version
       if author != githubUser:
         continue
 
