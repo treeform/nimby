@@ -45,10 +45,11 @@ proc findPackage(name: string): Package =
     if p["name"].getStr() == name:
       return p.to(Package)
 
-var list = false
-var develop = false
-var tag = false
-var pull = false
+var
+  develop = false
+  tag = false
+  pull = false
+  showVersion = false
 
 proc walkAll() =
   for dirKind, dir in walkDir("."):
@@ -76,7 +77,8 @@ proc walkAll() =
           version = line.split("=")[^1].strip()[1..^2]
         if "author" in line:
           author = line.split("=")[^1].strip()[1..^2]
-      echo "   ", version
+      if showVersion:
+        echo "   ", version
       if author != githubUser:
         continue
 
@@ -94,23 +96,27 @@ proc walkAll() =
       if package == nil:
         error "   NOT ON NIMBLE!!!"
       else:
-        echo "   ", package.url
+        #echo "   ", package.url
         let releaseUrl = package.url & "/releases/tag/v" & version
-        let packageUser = package.url.split("/")[^2]
         try:
           var client = newHttpClient()
-          let good = client.getContent(releaseUrl)
+          discard client.getContent(releaseUrl)
         except HttpRequestError:
-          error "   NO RELEASE!!!"
-          echo "   ", releaseUrl
-          if packageUser != githubUser:
-            echo "   ", "not your package, not your problem."
-          else:
-
-            if tag:
-              print "going to tag!"
-              cmd "git tag v" & version
-              cmd "git push origin --tags"
+          let releaseUrl = package.url & "/releases/tag/" & version
+          let packageUser = package.url.split("/")[^2]
+          try:
+            var client = newHttpClient()
+            discard client.getContent(releaseUrl)
+          except HttpRequestError:
+            error "   NO RELEASE!!!"
+            echo "   ", package.url, " looking for ", releaseUrl
+            if packageUser != githubUser:
+              echo "   ", "not your package, not your problem."
+            else:
+              if tag:
+                print "going to tag!"
+                cmd "git tag v" & version
+                cmd "git push origin --tags"
 
     setCurrentDir(minDir)
 
@@ -136,7 +142,6 @@ case subcommand
     # no filename has been given, so we show the help:
     writeHelp()
   of "list":
-    list = true
     walkAll()
   of "develop":
     develop = true
