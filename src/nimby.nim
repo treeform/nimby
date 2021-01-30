@@ -67,7 +67,7 @@ proc walkAll() =
         nimbleFile = file
         break
 
-    if nimbleFile != "":
+    if nimbleFile != "" and existsFile(nimbleFile):
       if pull:
         cmd "git pull"
 
