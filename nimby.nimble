@@ -1,7 +1,7 @@
 # Package
 
 version       = "0.1.0"
-author        = "treeform"
+author        = "Andre von Houck"
 description   = "Nimby helps you manage many nim packages."
 license       = "MIT"
 srcDir        = "src"

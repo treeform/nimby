@@ -1,6 +1,9 @@
 # Nimby helps manage a large collection of nimble packages in development.
-import httpclient, json, os, osproc, parsecfg, parseopt, strutils, terminal
+import httpclient, jsony, os, osproc, parsecfg, parseopt, strutils, terminal,
+    strutils, strformat
 
+let author = "treeform"
+let authorRealName = "Andre von Houck"
 let githubUser = execProcess("git config --get user.email")
 let minDir = getCurrentDir()
 
@@ -35,85 +38,166 @@ type Package = ref object
   tags: seq[string]
   description: string
   license: string
-  #web: string
+  web: string
 
-#let packagesJson = parseJson readFile(getHomeDir() / ".nimble/packages_official.json")
-let packagesJson = parseJson readFile("/p/packages/packages.json")
+
+let
+  packageData = readFile(getHomeDir() / ".nimble/packages_official.json")
+  packageList = fromJson(packageData, seq[Package])
+
+#let packagesJson = parseJson readFile("/p/packages/packages.json")
 proc findPackage(name: string): Package =
-  for p in packagesJson:
-    if p["name"].getStr() == name:
-      return p.to(Package)
+  for p in packageList:
+    if p.name == name:
+      return p
 
-var
-  list = false
-  develop = false
-  tag = false
-  pull = false
-  showVersion = false
+proc validNimPackage(): bool =
+  # list nimble status
+  let lib = getCurrentDir().splitPath.tail
+  existsFile(lib & ".nimble")
 
-proc walkAll() =
+proc list() =
+  ## Lists current info about package
+  # list git status
+  let lib = getCurrentDir().splitPath.tail
+  echo "* ", lib
+
+  if dirExists(".git"):
+    cmd "git status --short"
+
+proc commit() =
+  ## Lists current info about package
+
+  if not validNimPackage():
+    return
+
+  let lib = getCurrentDir().splitPath.tail
+  echo "* ", lib
+
+  cmd "git commit -am 'Update readme.'"
+  cmd "git push --set-upstream origin master"
+
+
+proc cloneAll() =
+  for p in packageList:
+    if p.url.contains "/" & author & "/":
+      if dirExists(p.name):
+        echo " * ", p.name
+      else:
+        echo " . ", p.name
+        cmd "git clone " & p.url
+
+
+const readmeSection = """
+
+`nimble install $lib`
+
+![Github Actions](https://github.com/$author/$lib/workflows/Github%20Actions/badge.svg)
+
+[API reference](https://nimdocs.com/$author/$lib)
+
+"""
+
+proc readme() =
+  ## Checks to see if readme is up to current standard
+
+  if not validNimPackage():
+    return
+
+  var
+    lib = getCurrentDir().splitPath.tail
+    readmeSec = readmeSection.replace("$lib", lib).replace("$author", author)
+    nimble = readFile(lib & ".nimble")
+    license = readFile("LICENSE")
+
+  echo "* ", lib
+
+  var libs: seq[string]
+  for line in nimble.split("\n"):
+    if line.startsWith("requires"):
+      let lib = line.replace("requires \"", "").split(" ")[0]
+      if lib != "nim":
+        libs.add(lib)
+    if line.startsWith("author") and authorRealName notin line:
+      echo "nimble: ", line
+  for line in license.split("\n"):
+    if line.startsWith("Copyright") and authorRealName notin line:
+      echo "LICENSE: ", line
+
+  if libs.len == 0:
+    readmeSec.add "This library has no dependencies other than the Nim standard libarary.\n\n"
+
+  readmeSec.add "## About\n"
+
+  if readmeSec notin readFile("README.md"):
+    echo "=".repeat(80)
+    echo readmeSec
+    echo "=".repeat(80)
+
+proc fixremote() =
+  var
+    lib = getCurrentDir().splitPath.tail
+    output = execProcess("git remote -v")
+
+  if "https://" in output and author in output:
+    cmd &"git remote remove origin"
+    cmd &"git remote add origin git@github.com:{author}/{lib}.git"
+
+proc walkAll(operation: proc()) =
   for dirKind, dir in walkDir("."):
     if dirKind != pcDir:
       continue
-    echo "* ", dir[2..^1]
     setCurrentDir(minDir / dir)
+    operation()
 
-    if dirExists(".git"):
-      cmd "git status --short"
 
-    var nimbleFile = ""
-    for pc, file in walkDir("."):
-      if pc == pcFile and file.endsWith(".nimble"):
-        nimbleFile = file
-        break
+    # if nimbleFile != "" and existsFile(nimbleFile):
+    #   if pull:
+    #     cmd "git pull"
 
-    if nimbleFile != "" and existsFile(nimbleFile):
-      if pull:
-        cmd "git pull"
+    #   var author, version: string
+    #   for line in readFile(nimbleFile).split("\n"):
+    #     if "version" in line:
+    #       version = line.split("=")[^1].strip()[1..^2]
+    #     if "author" in line:
+    #       author = line.split("=")[^1].strip()[1..^2]
+    #   if showVersion:
+    #     echo "   ", version
+    #   if author != githubUser:
+    #     continue
 
-      var author, version: string
-      for line in readFile(nimbleFile).split("\n"):
-        if "version" in line:
-          version = line.split("=")[^1].strip()[1..^2]
-        if "author" in line:
-          author = line.split("=")[^1].strip()[1..^2]
-      if showVersion:
-        echo "   ", version
-      if author != githubUser:
-        continue
+    #   let pkgName = nimbleFile[2..^8]
+    #   if pkgName != dir[2..^1]:
+    #     echo "!!! Nimble name does not match dir name: ",
+    #         nimbleFile[2..^1], " != ", dir[2..^1]
 
-      let pkgName = nimbleFile[2..^8]
-      if pkgName != dir[2..^1]:
-        echo "!!! Nimble name does not match dir name: ",
-            nimbleFile[2..^1], " != ", dir[2..^1]
+    #   cmd "nimble check"
 
-      cmd "nimble check"
+    #   if develop:
+    #     if nimbleFile != "":
+    #       cmd "nimble develop -y"
 
-      if develop:
-        if nimbleFile != "":
-          cmd "nimble develop -y"
+    #   let package = findPackage(pkgName)
+    #   if package == nil:
+    #     error "   NOT ON NIMBLE!!!"
+    #   else:
+    #     echo "   ", package.url
+    #     let releaseUrl = package.url & "/releases/tag/v" & version
+    #     let packageUser = package.url.split("/")[^2]
+    #     try:
+    #       var client = newHttpClient()
+    #       let good = client.getContent(releaseUrl)
+    #     except HttpRequestError:
+    #       error "   NO RELEASE!!!"
+    #       echo "   ", releaseUrl
+    #       if packageUser != githubUser:
+    #         echo "   ", "not your package, not your problem."
+    #       else:
 
-      let package = findPackage(pkgName)
-      if package == nil:
-        error "   NOT ON NIMBLE!!!"
-      else:
-        echo "   ", package.url
-        let releaseUrl = package.url & "/releases/tag/v" & version
-        let packageUser = package.url.split("/")[^2]
-        try:
-          var client = newHttpClient()
-          let good = client.getContent(releaseUrl)
-        except HttpRequestError:
-          error "   NO RELEASE!!!"
-          echo "   ", releaseUrl
-          if packageUser != githubUser:
-            echo "   ", "not your package, not your problem."
-          else:
-
-            if tag:
-              echo "going to tag!"
-              cmd "git tag v" & version
-              cmd "git push origin --tags"
+    #         if tag:
+    #           echo "going to tag!"
+    #           cmd "git tag v" & version
+    #           cmd "git push origin --tags"
 
     setCurrentDir(minDir)
 
@@ -133,18 +217,16 @@ for kind, key, val in p.getopt():
   of cmdEnd: assert(false) # cannot happen
 
 case subcommand
-  of "":
-    # No filename has been given, so we show the help:
-    writeHelp()
-  of "list":
-    list = true
-    walkAll()
-  of "develop":
-    develop = true
-    walkAll()
-  of "pull":
-    pull = true
-    walkAll()
-  of "tag":
-    tag = true
-    walkAll()
+  of "": writeHelp()
+  of "list": walkAll(list)
+  of "commit": walkAll(commit)
+  of "clone": cloneAll()
+  of "readme": walkAll(readme)
+  of "fixremote": walkAll(fixremote)
+
+  # of "develop":
+  #   walkAll(develop)
+  # of "pull":
+  #   walkAll(pull)
+  # of "tag":
+  #   walkAll(tag)
