@@ -65,6 +65,12 @@ proc list() =
   if dirExists(".git"):
     cmd "git status --short"
 
+proc urls() =
+  ## Lists current info about package
+  # list git status
+  let lib = getCurrentDir().splitPath.tail
+  echo " https://github.com/treeform/", lib
+
 proc commit() =
   ## Lists current info about package
 
@@ -143,6 +149,9 @@ proc fixremote() =
     cmd &"git remote remove origin"
     cmd &"git remote add origin git@github.com:{author}/{lib}.git"
 
+proc pull() =
+  cmd "git pull"
+
 proc walkAll(operation: proc()) =
   for dirKind, dir in walkDir("."):
     if dirKind != pcDir:
@@ -219,6 +228,7 @@ for kind, key, val in p.getopt():
 case subcommand
   of "": writeHelp()
   of "list": walkAll(list)
+  of "urls": walkAll(urls)
   of "commit": walkAll(commit)
   of "clone": cloneAll()
   of "readme": walkAll(readme)
@@ -226,7 +236,6 @@ case subcommand
 
   # of "develop":
   #   walkAll(develop)
-  # of "pull":
-  #   walkAll(pull)
+  of "pull": walkAll(pull)
   # of "tag":
   #   walkAll(tag)
