@@ -85,10 +85,12 @@ const readmeSection = """
 """
 
 proc libName(): string =
-  let remoteArr = execProcess("git remote -v").split()
-  if remoteArr.len > 1:
-    let remoteUrl = parseUrl(remoteArr[1])
-    return remoteUrl.paths[0].rmSuffix(".git")
+  let remoteOut = execProcess("git remote -v")
+  if "Not a git repository" notin remoteOut:
+    let remoteArr = remoteOut.split()
+    if remoteArr.len > 1:
+      let remoteUrl = parseUrl(remoteArr[1])
+      return remoteUrl.paths[0].rmSuffix(".git")
   return getCurrentDir().splitPath.tail
 
 proc authorName(): string =
@@ -121,15 +123,25 @@ proc check() =
   if not validNimPackage():
     return
 
+  let lib = libName()
+
   var
-    lib = libName()
     author = authorName()
     authorReal = authorRealName()
+  echo "* ", lib, " by ", author, " (" & authorReal & ")"
+
+  if not fileExists("LICENSE"):
+    error &"No {lib}/LICENSE file! "
+    return
+
+  if not fileExists(lib & ".nimble"):
+    error &"No {lib}/{lib}.nimble file! "
+    return
+
+  var
     readmeSec = readmeSection.replace("$lib", lib).replace("$author", author)
     nimble = readFile(lib & ".nimble")
     license = readFile("LICENSE")
-
-  echo "* ", lib, " by ", author, " (" & authorReal & ")"
 
   var libs: seq[string]
   for line in nimble.split("\n"):
@@ -144,7 +156,7 @@ proc check() =
         error "nimble: " & line
       else:
         let
-          arr = line.split()
+          arr = line.strip().split()
           libRequired = arr[1][1..^1]
           versionRequired = arr[3][0..^2]
           versionInstalled = mostRecentVersion(libRequired)
