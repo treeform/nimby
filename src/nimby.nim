@@ -86,18 +86,20 @@ const readmeSection = """
 
 proc libName(): string =
   let remoteOut = execProcess("git remote -v")
+  result = getCurrentDir().splitPath.tail
   if "Not a git repository" notin remoteOut:
     let remoteArr = remoteOut.split()
     if remoteArr.len > 1:
       let remoteUrl = parseUrl(remoteArr[1])
-      return remoteUrl.paths[0].rmSuffix(".git")
-  return getCurrentDir().splitPath.tail
+      let remoteLibName = remoteUrl.paths[0].rmSuffix(".git")
+      if result != remoteLibName:
+        error &"path {result}/ does not match git name {remoteLibName}"
 
 proc authorName(): string =
   let remoteArr = execProcess("git remote -v").split()
   if remoteArr.len > 1:
     let remoteUrl = parseUrl(remoteArr[1])
-    return remoteUrl.port
+    result = remoteUrl.port
 
 var authorRealNameCache: Table[string, string]
 proc authorRealName(): string =
