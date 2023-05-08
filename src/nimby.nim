@@ -1,6 +1,6 @@
 # Nimby helps manage a large collection of nimble packages in development.
 import os, osproc, parsecfg, parseopt, strutils, terminal,
-    strutils, strformat, puppy, tables
+    strutils, strformat, puppy, tables, strformat
 
 let minDir = getCurrentDir()
 
@@ -38,8 +38,8 @@ nimby - manage a large collection of nimble packages in development
   nimby develop           - make sure all packages are linked with nimble
   nimby pull              - pull all updates to packages from with git
   nimby test              - run tests on all of the packages
-  nimby fixremote         - fix remote http links to git links.
-  nimby fixreadme         - Make sure readme follows correct format.
+  nimby fix-remote         - fix remote http links to git links.
+  nimby fix-readme         - Make sure readme follows correct format.
 """
 
 proc validNimPackage(): bool =
@@ -74,7 +74,8 @@ proc commit() =
   cmd "git commit -am 'Update readme.'"
   cmd "git push --set-upstream origin master"
 
-const readmeSection = """
+const
+  readmeSection = """
 
 `nimble install $lib`
 
@@ -82,6 +83,56 @@ const readmeSection = """
 
 [API reference](https://nimdocs.com/$author/$lib)
 
+"""
+
+  buildYaml = """
+name: Github Actions
+on: [push, pull_request]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: jiro4989/setup-nim-action@v1
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+    - run: nimble test -y
+    - run: nimble test --gc:orc -y
+"""
+
+  docsYaml = """
+name: docs
+on:
+  push:
+    branches:
+      - master
+env:
+  nim-version: 'stable'
+  nim-src: src/${{ github.event.repository.name }}.nim
+  deploy-dir: .gh-pages
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: jiro4989/setup-nim-action@v1
+        with:
+          nim-version: ${{ env.nim-version }}
+      - run: nimble install -Y
+      - run: nimble doc --index:on --project --out:${{ env.deploy-dir }} ${{ env.nim-src }}
+      - name: "Copy to index.html"
+        run: cp ${{ env.deploy-dir }}/${{ github.event.repository.name }}.html ${{ env.deploy-dir }}/index.html
+      - name: Deploy documents
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ${{ env.deploy-dir }}
 """
 
 proc libName(): string =
@@ -165,7 +216,6 @@ proc check() =
         if libRequired != "nim" and versionInstalled != "" and versionRequired != versionInstalled:
           error &"nimble update dep: {libRequired} {versionRequired} -> {versionInstalled}"
 
-
   for line in license.split("\n"):
     if line.startsWith("Copyright") and authorRealName() notin line:
       error "update to? " & authorRealName()
@@ -178,7 +228,19 @@ proc check() =
   if "nimble install" in readme and readmeSec notin readme:
     error readmeSec
 
-proc fixremote() =
+  if dirExists(".github/workflows"):
+    # make sure build.yml and docs.yml same
+    if not fileExists(".github/workflows/build.yml"):
+      error "missing .github/workflows/build.yml"
+    elif readFile(".github/workflows/build.yml") != buildYaml:
+      error "different .github/workflows/build.yml"
+
+    if not fileExists(".github/workflows/docs.yml"):
+      error "missing .github/workflows/docs.yml"
+    elif readFile(".github/workflows/docs.yml") != docsYaml:
+      error "different .github/workflows/docs.yml"
+
+proc fixRemote() =
   var
     remoteArr = execProcess("git remote -v").split()
   if remoteArr.len > 1:
@@ -190,6 +252,23 @@ proc fixremote() =
       cmd &"git remote add origin {gitUrl}"
       cmd &"git pull origin master"
 
+proc fixGithubActions() =
+  if dirExists(".github/workflows"):
+    # make sure build.yml and docs.yml same
+    if not fileExists(".github/workflows/build.yml"):
+      error "missing .github/workflows/build.yml"
+      writeFile(".github/workflows/build.yml", buildYaml)
+    elif readFile(".github/workflows/build.yml") != buildYaml:
+      error "different .github/workflows/build.yml"
+      writeFile(".github/workflows/build.yml", buildYaml)
+
+    # if not fileExists(".github/workflows/docs.yml"):
+    #   error "missing .github/workflows/docs.yml"
+    #   writeFile(".github/workflows/docs.yml", docsYaml)
+    # elif readFile(".github/workflows/docs.yml") != docsYaml:
+    #   error "different .github/workflows/docs.yml"
+    #   writeFile(".github/workflows/docs.yml", docsYaml)
+
 proc pull() =
   cmd "git pull"
 
@@ -199,12 +278,26 @@ proc develop() =
 proc test() =
   cmd "nimble test"
 
+proc actionBoard() =
+  if not validNimPackage():
+    return
+
+  let lib = libName()
+
+  var
+    author = authorName()
+    authorReal = authorRealName()
+
+  echo "* ", lib, " by ", author, " (" & authorReal & ")"
+  echo "![Github Actions](https://github.com/" & author & "/" & lib & "/workflows/Github%20Actions/badge.svg"
+
+
 proc walkAll(operation: proc()) =
   for dirKind, dir in walkDir("."):
     if dirKind != pcDir:
       continue
     setCurrentDir(minDir / dir)
-    echo "------ ", minDir / dir, " ------"
+    #echo "------ ", minDir / dir, " ------"
     operation()
     setCurrentDir(minDir)
 
@@ -229,9 +322,11 @@ case subcommand
   of "urls": walkAll(urls)
   of "commit": walkAll(commit)
   of "check": walkAll(check)
-  of "fixremote": walkAll(fixremote)
+  of "fix-remote": walkAll(fixRemote)
+  of "fix-github-actions": walkAll(fixGithubActions)
   of "develop": walkAll(develop)
   of "pull": walkAll(pull)
   of "test": walkAll(test)
+  of "action-board": walkAll(actionBoard)
   else:
     echo "invalid command"
