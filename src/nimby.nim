@@ -1,6 +1,6 @@
 # Nimby helps manage a large collection of nimble packages in development.
 import os, osproc, parsecfg, parseopt, strutils, terminal,
-    strutils, strformat, urlly, puppy, tables
+    strutils, strformat, puppy, tables
 
 let minDir = getCurrentDir()
 
@@ -21,7 +21,7 @@ proc rmSuffix(s, suffix: string): string =
   return s
 
 proc cmd(command: string) =
-  discard execShellCmd command
+  discard execCmd command
 
 proc error(msg: string) =
   styledWriteLine(stderr, fgRed, msg, resetStyle)
@@ -162,7 +162,7 @@ proc check() =
           libRequired = arr[1][1..^1]
           versionRequired = arr[3][0..^2]
           versionInstalled = mostRecentVersion(libRequired)
-        if versionInstalled != "" and versionRequired != versionInstalled:
+        if libRequired != "nim" and versionInstalled != "" and versionRequired != versionInstalled:
           error &"nimble update dep: {libRequired} {versionRequired} -> {versionInstalled}"
 
 
@@ -174,7 +174,8 @@ proc check() =
   if libs.len == 0:
     readmeSec.add "This library has no dependencies other than the Nim standard library.\n\n"
 
-  if readmeSec notin readFile("README.md"):
+  let readme = readFile("README.md")
+  if "nimble install" in readme and readmeSec notin readme:
     error readmeSec
 
 proc fixremote() =
@@ -203,6 +204,7 @@ proc walkAll(operation: proc()) =
     if dirKind != pcDir:
       continue
     setCurrentDir(minDir / dir)
+    echo "------ ", minDir / dir, " ------"
     operation()
     setCurrentDir(minDir)
 
