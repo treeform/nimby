@@ -6,7 +6,7 @@
 
 ![Github Actions](https://github.com/treeform/nimby/workflows/Github%20Actions/badge.svg)
 
-[API reference](https://nimdocs.com/treeform/nimby)
+[API reference](https://treeform.github.io/nimby)
 
 This library has no dependencies other than the Nim standard library.
 

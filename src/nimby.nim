@@ -125,7 +125,7 @@ jobs:
         with:
           nim-version: ${{ env.nim-version }}
       - run: nimble install -Y
-      - run: nimble doc --index:on --project --out:${{ env.deploy-dir }} ${{ env.nim-src }}
+      - run: nimble doc --index:on --project --git.url:https://github.com/${{ github.repository }} --git.commit:master  --out:${{ env.deploy-dir }} ${{ env.nim-src }}
       - name: "Copy to index.html"
         run: cp ${{ env.deploy-dir }}/${{ github.event.repository.name }}.html ${{ env.deploy-dir }}/index.html
       - name: Deploy documents
@@ -252,9 +252,9 @@ proc fixRemote() =
       cmd &"git remote add origin {gitUrl}"
       cmd &"git pull origin master"
 
-proc fixGithubActions() =
+proc fixCi() =
   if dirExists(".github/workflows"):
-    # make sure build.yml and docs.yml same
+    # make sure build.yml is correct
     if not fileExists(".github/workflows/build.yml"):
       error "missing .github/workflows/build.yml"
       writeFile(".github/workflows/build.yml", buildYaml)
@@ -262,12 +262,17 @@ proc fixGithubActions() =
       error "different .github/workflows/build.yml"
       writeFile(".github/workflows/build.yml", buildYaml)
 
-    # if not fileExists(".github/workflows/docs.yml"):
-    #   error "missing .github/workflows/docs.yml"
-    #   writeFile(".github/workflows/docs.yml", docsYaml)
-    # elif readFile(".github/workflows/docs.yml") != docsYaml:
-    #   error "different .github/workflows/docs.yml"
-    #   writeFile(".github/workflows/docs.yml", docsYaml)
+proc fixDocs() =
+  if dirExists(".github/workflows"):
+    # Add github actions doc builder.
+    cmd &"git add -f .github/workflows/docs.yml"
+    # make sure docs.yml is correct
+    if not fileExists(".github/workflows/docs.yml"):
+      error "missing .github/workflows/docs.yml"
+      writeFile(".github/workflows/docs.yml", docsYaml)
+    elif readFile(".github/workflows/docs.yml") != docsYaml:
+      error "different .github/workflows/docs.yml"
+      writeFile(".github/workflows/docs.yml", docsYaml)
 
 proc pull() =
   cmd "git pull"
@@ -323,7 +328,8 @@ case subcommand
   of "commit": walkAll(commit)
   of "check": walkAll(check)
   of "fix-remote": walkAll(fixRemote)
-  of "fix-github-actions": walkAll(fixGithubActions)
+  of "fix-ci": walkAll(fixCi)
+  of "fix-docs": walkAll(fixDocs)
   of "develop": walkAll(develop)
   of "pull": walkAll(pull)
   of "test": walkAll(test)
