@@ -16,7 +16,7 @@ jobs:
       - uses: treeform/setup-nim-action@v2
 
       - name: Install Nim packages
-        run: nim c --mm:atomicArc -d:release .\src\nimby.nim
+        run: nim c --mm:atomicArc -d:release src/nimby.nim
 
       - name: Test Speed
         run: src/nimby install fidget2
