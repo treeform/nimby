@@ -9,9 +9,10 @@ var
   timeStarted: float64
 
   jobLock: Lock
-  jobQueuePackagesToFetch: seq[string]
-  outstandingJobs: int
-
+  jobQueue: array[100, string]
+  jobQueueStart: int = 0
+  jobQueueEnd: int = 0
+  jobsInProgress: int
 
 initLock(jobLock)
 
@@ -94,18 +95,31 @@ proc fetchPackage(packageName: string, indent: string) {.gcsafe.}
 proc enqueuePackage(packageName: string) =
   ## Add a package to the job queue.
   withLock(jobLock):
-    jobQueuePackagesToFetch.add(packageName)
-    inc outstandingJobs
+    jobQueue[jobQueueEnd] = packageName
+    inc jobQueueEnd
 
 proc popPackage(): string =
   ## Pop a package from the job queue or return empty string.
   withLock(jobLock):
-    if jobQueuePackagesToFetch.len > 0:
-      result = jobQueuePackagesToFetch.pop()
+    if jobQueueEnd > jobQueueStart:
+      result = jobQueue[jobQueueStart]
+      inc jobQueueStart
+      inc jobsInProgress
 
-proc fetchDeps(packageName: string, indent: string) =
-  ## Fetch the dependencies of a package.
-  info indent & "Fetching " & packageName
+proc readPackageSrcDir(packageName: string): string =
+  ## Read the source directory of a package.
+  if not fileExists(&"{packageName}/{packageName}.nimble"):
+    return ""
+  let nimble = readFile(&"{packageName}/{packageName}.nimble")
+  for line in nimble.splitLines():
+    if line.startsWith("srcDir"):
+      return packageName & "/" & line.split(" ")[^1].strip().replace("\"", "")
+  return packageName
+
+proc readPackageDeps(packageName: string): seq[string] =
+  ## Read the dependencies of a package.
+  if not fileExists(&"{packageName}/{packageName}.nimble"):
+    return @[]
   let nimble = readFile(&"{packageName}/{packageName}.nimble")
   for line in nimble.splitLines():
     if line.startsWith("requires"):
@@ -121,14 +135,20 @@ proc fetchDeps(packageName: string, indent: string) =
         else:
           dep.add(c)
           inc i
-      info &"Dependency: {dep}"
       if dep == "nim":
         # Skip Nim dependency as that is managed by Nimby itself.
         continue
       if dep == "":
         # Skip empty dependency.
         continue
-      enqueuePackage(dep)
+      result.add(dep)
+  return result
+
+proc fetchDeps(packageName: string, indent: string) =
+  let deps = readPackageDeps(packageName)
+  for dep in deps:
+    info &"Dependency: {dep}"
+    enqueuePackage(dep)
 
 proc worker(id: int) {.thread.} =
   ## Worker thread that processes packages from the queue.
@@ -137,7 +157,7 @@ proc worker(id: int) {.thread.} =
     if pkg.len == 0:
       var done: bool
       withLock(jobLock):
-        done = (outstandingJobs == 0)
+        done = (jobsInProgress == 0)
       if done:
         break
       sleep(20)
@@ -145,13 +165,13 @@ proc worker(id: int) {.thread.} =
 
     if dirExists(pkg):
       withLock(jobLock):
-        dec outstandingJobs
+        dec jobsInProgress
       continue
 
     fetchPackage(pkg, "")
 
     withLock(jobLock):
-      dec outstandingJobs
+      dec jobsInProgress
 
 proc addToNimCfg(package: JsonNode) =
   ## Add the package to the nim.cfg file.
@@ -162,32 +182,24 @@ proc addToNimCfg(package: JsonNode) =
     let name = package["name"].getStr()
     var path = name
     # Parse the nimble file to get the srcDir
-    let nimble = readFile(&"{name}/{name}.nimble")
-    for line in nimble.splitLines():
-      if line.startsWith("srcDir"):
-        path = path & "/" & line.split(" ")[^1].strip().replace("\"", "")
-        break
+    path = readPackageSrcDir(name)
     nimCfg.add(&"--path:\"{path}\"\n")
     writeFile("nim.cfg", nimCfg)
 
-
-proc removeFromNimCfg(packageName: string) =
+proc removeFromNimCfg(name: string) =
   ## Remove the package from the nim.cfg file.
   withLock(jobLock):
     var nimCfg = readFile("nim.cfg")
     var lines = nimCfg.splitLines()
     for i, line in lines:
-      if line.startsWith("--path:"):
-        let name = cutBetween(line, "\"", "\"").split("/")[0]
-        if name == packageName:
-          lines.delete(i)
-          break
+      if line.contains(&"--path:\"{name}/") or line.contains(&"--path:\"{name}\""):
+        lines.delete(i)
+        break
+    nimCfg = lines.join("\n")
     writeFile("nim.cfg", lines.join("\n"))
-
 
 proc fetchPackage(packageName: string, indent: string) =
   ## Main recursive function to fetch a package and its dependencies.
-  
   if dirExists(packageName):
     return
 
@@ -199,6 +211,9 @@ proc fetchPackage(packageName: string, indent: string) =
       info &"Package found: {name}"
       package = p
       break
+
+  if package == nil:
+    quit "Package not found in global packages.json."
 
   let 
     name = package["name"].getStr()
@@ -216,7 +231,7 @@ proc fetchPackage(packageName: string, indent: string) =
     fetchDeps(name, indent & "  ")
   else:
     quit &"Unknown method {methodKind} to fetch package {name}"
-
+  
 proc installPackage(argument: string) =
   ## Install a package.
   timeStart()
@@ -230,8 +245,9 @@ proc installPackage(argument: string) =
     cmd("git clone https://github.com/nim-lang/packages.git --depth 1 packages")
   
   # init job queue
-  jobQueuePackagesToFetch = @[]
-  outstandingJobs = 0
+  jobQueueStart = 0
+  jobQueueEnd = 0
+  jobsInProgress = 0
 
   # Ensure packages index is available before workers start
   # and enqueue the initial package
@@ -244,6 +260,7 @@ proc installPackage(argument: string) =
     joinThread(threads[i])
 
   timeEnd()
+  quit(0)
   
 proc updatePackage(argument: string) =
   ## Update a package.
@@ -252,26 +269,89 @@ proc updatePackage(argument: string) =
 proc removePackage(argument: string) =
   ## Remove a package.
   info &"Removing package: {argument}"
+  removeFromNimCfg(argument)
   if not dirExists(argument):
     quit("Package not found.")
   removeDir(argument)
-  removeFromNimCfg(argument)
+
+proc readPackageVersion(packageName: string): string =
+  ## Read the version of a package.
+  let fileName = &"{packageName}/{packageName}.nimble"
+  if not fileExists(fileName):
+    return ""
+  let nimble = readFile(&"{packageName}/{packageName}.nimble")
+  for line in nimble.splitLines():
+    if line.startsWith("version"):
+      return line.split(" ")[^1].strip().replace("\"", "")
+  return ""
   
 proc listPackage(argument: string) =
   ## List all packages in the workspace.
-  info &"Listing package: {argument}"
-  for kind, path in walkDir(workspaceRoot):
-    if kind == pcDir:
-      let packageName = path.extractFilename()
-      echo packageName
+  if argument != "":
+    if not dirExists(argument):
+      quit(&"Package `{argument}` not found.")
+    let packageName = argument
+    let packageVersion = readPackageVersion(packageName)
+    echo &"{packageName} {packageVersion}"
+  else:
+    for kind, path in walkDir(workspaceRoot):
+      if kind == pcDir:
+        let packageName = path.extractFilename()
+        let packageVersion = readPackageVersion(packageName)
+        echo &"{packageName} {packageVersion}"
   
+proc walkTreePackage(name, indent: string) =
+  ## Walk the tree of a package.
+  let packageName = name
+  let packageVersion = readPackageVersion(packageName)
+  echo &"{indent}{packageName} {packageVersion}"
+  let deps = readPackageDeps(packageName)
+  for dep in deps:
+    walkTreePackage(dep, indent & "  ")
+
 proc treePackage(argument: string) =
   ## Tree the package dependencies.
-  info &"Treeing package: {argument}"
-  
+  if argument != "":
+    if not dirExists(argument):
+      quit(&"Package `{argument}` not found.")
+    let packageName = argument
+    walkTreePackage(packageName, "")
+  else:
+    for kind, path in walkDir(workspaceRoot):
+      if kind == pcDir:
+        let packageName = path.extractFilename()
+        walkTreePackage(packageName, "")
+
+proc checkPackage(packageName: string) =
+  ## Check a package.
+  if not fileExists(&"{packageName}/{packageName}.nimble"):
+    return
+  let deps = readPackageDeps(packageName)
+  for dep in deps:
+    if not dirExists(dep):
+      echo &"Dependency `{dep}` not found for package `{packageName}`."
+  if not fileExists(&"nim.cfg"):
+    quit(&"Package `nim.cfg` not found.")
+  let nimCfg = readFile("nim.cfg")
+  if not nimCfg.contains(&"--path:\"{packageName}/") and not nimCfg.contains(&"--path:\"{packageName}\""):
+    echo &"Package `{packageName}` not found in nim.cfg."
+
 proc doctorPackage(argument: string) =
   ## Doctor the package.
-  info &"Doctoring package: {argument}"
+  # walk though all the packages:
+  # Make sure they have nim.cfg entry
+  # Make sure they have all deps installed.
+  
+  if argument != "":
+    if not dirExists(argument):
+      quit(&"Package `{argument}` not found.")
+    let packageName = argument
+    checkPackage(packageName)
+  else:
+    for kind, path in walkDir(workspaceRoot):
+      if kind == pcDir:
+        let packageName = path.extractFilename()
+        checkPackage(packageName)
 
 when isMainModule:
   workspaceRoot = findWorkspaceRoot()
