@@ -20,3 +20,6 @@ jobs:
 
       - name: Test Speed
         run: src/nimby install fidget2
+
+      - name: List Installed Nim packages
+        run: nimby list

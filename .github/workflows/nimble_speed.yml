@@ -17,3 +17,6 @@ jobs:
 
       - name: Install Nim packages
         run: nimble install fidget2
+
+      - name: List Installed Nim packages
+        run: nimble list -i --ver
