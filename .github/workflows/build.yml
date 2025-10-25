@@ -1,0 +1,22 @@
+
+name: Github Actions
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: treeform/setup-nim-action@v2
+
+      - name: Install Nim packages
+        run: nim c --mm:atomicArc -d:release .\src\nimby.nim
+
+      - name: Test Speed
+        run: src/nimby install fidget2
