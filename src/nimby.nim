@@ -25,7 +25,7 @@ proc cmd(command: string) =
   ## Run the command and print the output if it fails.
   let exeName = command.split(" ")[0]
   let args = command.split(" ")[1..^1]
-  let p = startProcess(exeName, args=args)
+  let p = startProcess(exeName, args=args, options={poUsePath})
   if p.waitForExit(-1) != 0:
     echo "> ", command
     echo p.peekableOutputStream().readAll()
