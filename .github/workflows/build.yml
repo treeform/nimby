@@ -22,4 +22,4 @@ jobs:
         run: src/nimby install fidget2
 
       - name: List Installed Nim packages
-        run: nimby list
+        run: src/nimby list
