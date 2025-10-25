@@ -338,10 +338,9 @@ proc checkPackage(packageName: string) =
 
 proc doctorPackage(argument: string) =
   ## Doctor the package.
-  # walk though all the packages:
+  # Walk through all the packages:
   # Make sure they have nim.cfg entry
   # Make sure they have all deps installed.
-  
   if argument != "":
     if not dirExists(argument):
       quit(&"Package `{argument}` not found.")
