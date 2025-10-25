@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: treeform/setup-nim-action@v2
 
-      - name: Install Nim packages
+      - name: Test Speed
         run: nimble install fidget2
 
       - name: List Installed Nim packages
