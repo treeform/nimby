@@ -1,10 +1,51 @@
-# Nimby helps manage a large collection of nimble packages in development.
-import os, osproc, parsecfg, parseopt, strutils, terminal,
-    strutils, strformat, puppy, tables, strformat
+import std/[os, json, times, osproc, parseopt, strutils, tables, strformat, streams, locks]
+   
+var
+  verbose: bool = false
+  workspaceRoot: string 
+  timeStarted: float64
 
-let minDir = getCurrentDir()
+  jobLock: Lock
+  jobQueuePackagesToFetch: seq[string]
+
+initLock(jobLock)
+
+proc info(message: string) =
+  ## Print information message if verbose is true.
+  if verbose:
+    echo message
+
+proc cmd(command: string) =
+  ## Run the command and print the output if it fails.
+  let exeName = command.split(" ")[0]
+  let args = command.split(" ")[1..^1]
+  let p = startProcess(exeName, args=args)
+  if p.waitForExit(-1) != 0:
+    echo "> ", command
+    echo p.peekableOutputStream().readAll()
+    echo p.peekableErrorStream().readAll()
+    quit("error code: " & $p.peekExitCode())
+  p.close()
+
+proc writeVersion() =
+  ## Write the version of Nimby.
+  echo "Nimby 0.1.0"
+
+proc writeHelp() =
+  ## Write the help message.
+  echo "Usage: nimby <subcommand> [options]"
+  echo "  ~ Minimal package manager for Nim. ~"
+  echo "Subcommands:"
+  echo "  install    install all Nim packages in the current directory"
+  echo "  update     update all Nim packages in the current directory"
+  echo "  uninstall  uninstall all Nim packages in the current directory"
+  echo "  list       list all Nim packages in the current directory"
+  echo "  tree       list all packages as a dependency tree"
+  echo "  doctor     fix any linking issues with the packages"
+  echo "  help       show this help message"
 
 proc cutBetween(str, a, b: string): string =
+  ## Cut a string by two substrings.
   let
     cutA = str.find(a)
   if cutA == -1:
@@ -15,324 +56,188 @@ proc cutBetween(str, a, b: string): string =
     return ""
   return str[cutA + a.len..<cutB]
 
-proc rmSuffix(s, suffix: string): string =
-  if s.endsWith(suffix):
-    return s[0 .. s.len - suffix.len - 1]
-  return s
+proc timeStart() =
+  ## Start the timer.
+  timeStarted = epochTime()
 
-proc cmd(command: string) =
-  discard execCmd command
+proc timeEnd() =
+  ## Stop the timer and print the time taken.
+  let timeEnded = epochTime()
+  echo "Took: ", timeEnded - timeStarted, " seconds"
 
-proc error(msg: string) =
-  styledWriteLine(stderr, fgRed, msg, resetStyle)
+proc findWorkspaceRoot(): string =
+  ## Finds the topmost nim.cfg file and returns the workspace root.
+  ## If no nim.cfg file is found, returns the current directory.
+  result = getCurrentDir()
+  var currentDir = result
+  # Find topmost nim.cfg file.
+  while currentDir != "/" and currentDir != "":
+    if fileExists(currentDir & "/nim.cfg"):
+      result = currentDir
+    currentDir = currentDir.parentDir
 
-proc writeVersion() =
-  ## Writes the version of the nimby tool.
-  echo loadConfig("./nimby.nimble").getSectionValue("", "version")
+proc fetchPackage(packageName: string, indent: string) 
 
-proc writeHelp() =
-  ## Write the help message for the nimby tool.
-  echo """
-nimby - manage a large collection of nimble packages in development
-  nimby list              - lists all nim packages in the current directory
-  nimby develop           - make sure all packages are linked with nimble
-  nimby pull              - pull all updates to packages from with git
-  nimby test              - run tests on all of the packages
-  nimby fix-remote         - fix remote http links to git links.
-  nimby fix-readme         - Make sure readme follows correct format.
-"""
-
-proc validNimPackage(): bool =
-  # list nimble status
-  let lib = getCurrentDir().splitPath.tail
-  existsFile(lib & ".nimble")
-
-proc list() =
-  ## Lists current info about package
-  # list git status
-  let lib = getCurrentDir().splitPath.tail
-  echo "* ", lib
-
-  if dirExists(".git"):
-    cmd "git status --short"
-
-proc urls() =
-  ## Lists current info about package
-  # list git status
-  let lib = getCurrentDir().splitPath.tail
-  echo " https://github.com/treeform/", lib
-
-proc commit() =
-  ## Lists current info about package
-
-  if not validNimPackage():
-    return
-
-  let lib = getCurrentDir().splitPath.tail
-  echo "* ", lib
-
-  cmd "git commit -am 'Update readme.'"
-  cmd "git push --set-upstream origin master"
-
-const
-  readmeSection = """
-
-`nimble install $lib`
-
-![Github Actions](https://github.com/$author/$lib/workflows/Github%20Actions/badge.svg)
-
-[API reference](https://nimdocs.com/$author/$lib)
-
-"""
-
-  buildYaml = """
-name: Github Actions
-on: [push, pull_request]
-jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-    - uses: actions/checkout@v3
-    - uses: jiro4989/setup-nim-action@v1
-      with:
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-    - run: nimble test -y
-    - run: nimble test --gc:orc -y
-"""
-
-  docsYaml = """
-name: docs
-on:
-  push:
-    branches:
-      - master
-env:
-  nim-version: 'stable'
-  nim-src: src/${{ github.event.repository.name }}.nim
-  deploy-dir: .gh-pages
-jobs:
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: jiro4989/setup-nim-action@v1
-        with:
-          nim-version: ${{ env.nim-version }}
-      - run: nimble install -Y
-      - run: nimble doc --index:on --project --git.url:https://github.com/${{ github.repository }} --git.commit:master  --out:${{ env.deploy-dir }} ${{ env.nim-src }}
-      - name: "Copy to index.html"
-        run: cp ${{ env.deploy-dir }}/${{ github.event.repository.name }}.html ${{ env.deploy-dir }}/index.html
-      - name: Deploy documents
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ${{ env.deploy-dir }}
-"""
-
-proc libName(): string =
-  let remoteOut = execProcess("git remote -v")
-  result = getCurrentDir().splitPath.tail
-  if "Not a git repository" notin remoteOut:
-    let remoteArr = remoteOut.split()
-    if remoteArr.len > 1:
-      let remoteUrl = parseUrl(remoteArr[1])
-      let remoteLibName = remoteUrl.paths[0].rmSuffix(".git")
-      if result != remoteLibName:
-        error &"path {result}/ does not match git name {remoteLibName}"
-
-proc authorName(): string =
-  let remoteArr = execProcess("git remote -v").split()
-  if remoteArr.len > 1:
-    let remoteUrl = parseUrl(remoteArr[1])
-    result = remoteUrl.port
-
-var authorRealNameCache: Table[string, string]
-proc authorRealName(): string =
-  let name = authorName()
-  if name notin authorRealNameCache:
-    let
-      githubUrl = "https://github.com/" & name
-      res = fetch(githubUrl)
-      realName = res.cutBetween("itemprop=\"name\">", "</span>").strip()
-    authorRealNameCache[name] = realName
-  return authorRealNameCache[name]
-
-proc mostRecentVersion(libName: string): string =
-  let nimblePath = &"../{libName}/{libName}.nimble"
-  if fileExists(nimblePath):
-    for line in readFile(nimblePath).split("\n"):
-      if line.startsWith("version"):
-        return line.splitWhitespace()[^1][1..^2]
-
-proc check() =
-  ## Checks to see if readme/licnese/nimble are up to current standard
-
-  if not validNimPackage():
-    return
-
-  let lib = libName()
-
-  var
-    author = authorName()
-    authorReal = authorRealName()
-  echo "* ", lib, " by ", author, " (" & authorReal & ")"
-
-  if not fileExists("LICENSE"):
-    error &"No {lib}/LICENSE file! "
-    return
-
-  if not fileExists(lib & ".nimble"):
-    error &"No {lib}/{lib}.nimble file! "
-    return
-
-  var
-    readmeSec = readmeSection.replace("$lib", lib).replace("$author", author)
-    nimble = readFile(lib & ".nimble")
-    license = readFile("LICENSE")
-
-  var libs: seq[string]
-  for line in nimble.split("\n"):
+proc fetchDeps(packageName: string, indent: string) =
+  ## Fetch the dependencies of a package.
+  info indent & "Fetching " & packageName
+  let nimble = readFile(&"{packageName}/{packageName}.nimble")
+  for line in nimble.splitLines():
     if line.startsWith("requires"):
-      let lib = line.replace("requires \"", "").split(" ")[0]
-      if lib != "nim":
-        libs.add(lib)
-    if line.startsWith("author") and authorRealName() notin line:
-      error "nimble: " & line
-    if "requires" in line:
-      if ">=" notin line:
-        error "nimble: " & line
-      else:
-        let
-          arr = line.strip().split()
-          libRequired = arr[1][1..^1]
-          versionRequired = arr[3][0..^2]
-          versionInstalled = mostRecentVersion(libRequired)
-        if libRequired != "nim" and versionInstalled != "" and versionRequired != versionInstalled:
-          error &"nimble update dep: {libRequired} {versionRequired} -> {versionInstalled}"
+      var i = 9
+      var dep = ""
+      while i < line.len and line[i] != ' ':
+        let c = line[i]
+        if c in ['>', '<', '=', '~', '^']:
+          break
+        elif c in ['"', ' ']:
+          inc i
+          continue
+        else:
+          dep.add(c)
+          inc i
+      info &"Dependency: {dep}"
+      if dep == "nim":
+        # Skip Nim dependency as that is managed by Nimby itself.
+        continue
+      if dep == "":
+        # Skip empty dependency.
+        continue
+      fetchPackage(dep, indent)
 
-  for line in license.split("\n"):
-    if line.startsWith("Copyright") and authorRealName() notin line:
-      error "update to? " & authorRealName()
-      error "LICENSE: " & line
+proc addToNimCfg(package: JsonNode) =
+  ## Add the package to the nim.cfg file.
+  if not fileExists("nim.cfg"):
+    writeFile("nim.cfg", "# Created by Nimby\n")
+  var nimCfg = readFile("nim.cfg")
+  let name = package["name"].getStr()
+  var path = name
+  # Parse the nimble file to get the srcDir
+  let nimble = readFile(&"{name}/{name}.nimble")
+  for line in nimble.splitLines():
+    if line.startsWith("srcDir"):
+      path = path & "/" & line.split(" ")[^1].strip().replace("\"", "")
+      break
+  nimCfg.add(&"--path:\"{path}\"\n")
+  writeFile("nim.cfg", nimCfg)
 
-  if libs.len == 0:
-    readmeSec.add "This library has no dependencies other than the Nim standard library.\n\n"
+proc removeFromNimCfg(packageName: string) =
+  ## Remove the package from the nim.cfg file.
+  var nimCfg = readFile("nim.cfg")
+  var lines = nimCfg.splitLines()
+  for i, line in lines:
+    if line.startsWith("--path:"):
+      let name = cutBetween(line, "\"", "\"").split("/")[0]
+      if name == packageName:
+        lines.delete(i)
+        break
+  writeFile("nim.cfg", lines.join("\n"))
 
-  let readme = readFile("README.md")
-  if "nimble install" in readme and readmeSec notin readme:
-    error readmeSec
 
-  if dirExists(".github/workflows"):
-    # make sure build.yml and docs.yml same
-    if not fileExists(".github/workflows/build.yml"):
-      error "missing .github/workflows/build.yml"
-    elif readFile(".github/workflows/build.yml") != buildYaml:
-      error "different .github/workflows/build.yml"
-
-    if not fileExists(".github/workflows/docs.yml"):
-      error "missing .github/workflows/docs.yml"
-    elif readFile(".github/workflows/docs.yml") != docsYaml:
-      error "different .github/workflows/docs.yml"
-
-proc fixRemote() =
-  var
-    remoteArr = execProcess("git remote -v").split()
-  if remoteArr.len > 1:
-    let remoteUrl = remoteArr[1]
-    if "https://github.com/" in remoteUrl:
-      let gitUrl = remoteUrl.replace("https://github.com/", "git@github.com:")
-      echo remoteUrl, " -> ", gitUrl
-      cmd &"git remote remove origin"
-      cmd &"git remote add origin {gitUrl}"
-      cmd &"git pull origin master"
-
-proc fixCi() =
-  if dirExists(".github/workflows"):
-    # make sure build.yml is correct
-    if not fileExists(".github/workflows/build.yml"):
-      error "missing .github/workflows/build.yml"
-      writeFile(".github/workflows/build.yml", buildYaml)
-    elif readFile(".github/workflows/build.yml") != buildYaml:
-      error "different .github/workflows/build.yml"
-      writeFile(".github/workflows/build.yml", buildYaml)
-
-proc fixDocs() =
-  if dirExists(".github/workflows"):
-    # Add github actions doc builder.
-    cmd &"git add -f .github/workflows/docs.yml"
-    # make sure docs.yml is correct
-    if not fileExists(".github/workflows/docs.yml"):
-      error "missing .github/workflows/docs.yml"
-      writeFile(".github/workflows/docs.yml", docsYaml)
-    elif readFile(".github/workflows/docs.yml") != docsYaml:
-      error "different .github/workflows/docs.yml"
-      writeFile(".github/workflows/docs.yml", docsYaml)
-
-proc pull() =
-  cmd "git pull"
-
-proc develop() =
-  cmd "nimble develop -y"
-
-proc test() =
-  cmd "nimble test"
-
-proc actionBoard() =
-  if not validNimPackage():
+proc fetchPackage(packageName: string, indent: string) =
+  ## Main recursive function to fetch a package and its dependencies.
+  
+  if dirExists(packageName):
     return
 
-  let lib = libName()
+  let packages = readFile("packages/packages.json").parseJson()
+  var package: JsonNode
+  for p in packages:
+    let name = p["name"].getStr()
+    if name.toLowerAscii() == packageName.toLowerAscii():
+      info &"Package found: {name}"
+      package = p
+      break
 
-  var
-    author = authorName()
-    authorReal = authorRealName()
+  let 
+    name = package["name"].getStr()
+    methodKind = package["method"].getStr()
+    url = package["url"].getStr()
 
-  echo "* ", lib, " by ", author, " (" & authorReal & ")"
-  echo "![Github Actions](https://github.com/" & author & "/" & lib & "/workflows/Github%20Actions/badge.svg"
+  if name == "":
+    quit("Package not found in global packages.json.")
 
-
-proc walkAll(operation: proc()) =
-  for dirKind, dir in walkDir("."):
-    if dirKind != pcDir:
-      continue
-    setCurrentDir(minDir / dir)
-    #echo "------ ", minDir / dir, " ------"
-    operation()
-    setCurrentDir(minDir)
-
-var subcommand, url: string
-var p = initOptParser()
-for kind, key, val in p.getopt():
-  case kind
-  of cmdArgument:
-    if subcommand == "":
-      subcommand = key
-    else:
-      url = key
-  of cmdLongOption, cmdShortOption:
-    case key
-    of "help", "h": writeHelp()
-    of "version", "v": writeVersion()
-  of cmdEnd: assert(false) # cannot happen
-
-case subcommand
-  of "": writeHelp()
-  of "list": walkAll(list)
-  of "urls": walkAll(urls)
-  of "commit": walkAll(commit)
-  of "check": walkAll(check)
-  of "fix-remote": walkAll(fixRemote)
-  of "fix-ci": walkAll(fixCi)
-  of "fix-docs": walkAll(fixDocs)
-  of "develop": walkAll(develop)
-  of "pull": walkAll(pull)
-  of "test": walkAll(test)
-  of "action-board": walkAll(actionBoard)
+  info &"Package: {name} {methodKind} {url}"
+  case methodKind:
+  of "git":
+    cmd(&"git clone --depth 1 {url} {name}")
+    addToNimCfg(package)
+    fetchDeps(name, indent & "  ")
   else:
-    echo "invalid command"
+    quit &"Unknown method {methodKind} to fetch package {name}"
+
+proc installPackage(argument: string) =
+  ## Install a package.
+  timeStart()
+  echo &"Installing package: {argument}"
+
+  if dirExists(argument):
+    quit("Package already installed.")
+
+  if not fileExists("packages/packages.json"):
+    info "Packages not found, cloning..."
+    cmd("git clone https://github.com/nim-lang/packages.git --depth 1 packages")
+  
+  fetchPackage(argument, "")
+
+  timeEnd()
+  
+proc updatePackage(argument: string) =
+  ## Update a package.
+  info &"Updating package: {argument}"
+  
+proc removePackage(argument: string) =
+  ## Remove a package.
+  info &"Removing package: {argument}"
+  if not dirExists(argument):
+    quit("Package not found.")
+  removeDir(argument)
+  removeFromNimCfg(argument)
+  
+proc listPackage(argument: string) =
+  ## List all packages in the workspace.
+  info &"Listing package: {argument}"
+  for kind, path in walkDir(workspaceRoot):
+    if kind == pcDir:
+      let packageName = path.extractFilename()
+      echo packageName
+  
+proc treePackage(argument: string) =
+  ## Tree the package dependencies.
+  info &"Treeing package: {argument}"
+  
+proc doctorPackage(argument: string) =
+  ## Doctor the package.
+  info &"Doctoring package: {argument}"
+
+when isMainModule:
+  workspaceRoot = findWorkspaceRoot()
+  setCurrentDir(workspaceRoot)
+
+  var subcommand, argument: string
+  var p = initOptParser()
+  for kind, key, val in p.getopt():
+    case kind
+    of cmdArgument:
+      if subcommand == "":
+        subcommand = key
+      else:
+        argument = key
+    of cmdLongOption, cmdShortOption:
+      case key
+      of "help", "h": writeHelp()
+      of "version", "v": writeVersion()
+      of "verbose", "V": verbose = true
+    of cmdEnd: assert(false) # cannot happen
+
+  case subcommand
+    of "": writeHelp()
+    of "install": installPackage(argument)
+    of "update": updatePackage(argument)
+    of "remove": removePackage(argument)
+    of "list": listPackage(argument)
+    of "tree": treePackage(argument)
+    of "doctor": doctorPackage(argument)
+    of "help": writeHelp()
+    else:
+      quit "invalid command"
