@@ -1,5 +1,5 @@
 
-name: Github Actions
+name: Nimble Speed Test
 on:
   push:
     branches: [ master ]
