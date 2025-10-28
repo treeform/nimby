@@ -204,7 +204,10 @@ proc fetchPackage(argument: string, indent: string) =
   var isLocal = false
 
   if packageName.endsWith(".nimble"):
-    echo "  Using local nimble file: ", packageName
+    if not fileExists(packageName):
+      quit(&"Local nimble file not found: {packageName}")
+    else:
+      echo "  Using local nimble file: ", packageName
     isLocal = true
     packageName = argument.extractFilename()
     packageName.removeSuffix(".nimble")
