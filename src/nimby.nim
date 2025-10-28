@@ -90,7 +90,7 @@ proc findWorkspaceRoot(): string =
       result = currentDir
     currentDir = currentDir.parentDir
 
-proc fetchPackage(packageName: string, indent: string) {.gcsafe.}
+proc fetchPackage(argument: string, indent: string) {.gcsafe.}
 
 proc enqueuePackage(packageName: string) =
   ## Add a package to the job queue.
@@ -173,16 +173,15 @@ proc worker(id: int) {.thread.} =
     withLock(jobLock):
       dec jobsInProgress
 
-proc addToNimCfg(package: JsonNode) =
+proc addToNimCfg(packageName: string) =
   ## Add the package to the nim.cfg file.
   withLock(jobLock):
     if not fileExists("nim.cfg"):
       writeFile("nim.cfg", "# Created by Nimby\n")
     var nimCfg = readFile("nim.cfg")
-    let name = package["name"].getStr()
-    var path = name
+    var path = packageName
     # Parse the nimble file to get the srcDir
-    path = readPackageSrcDir(name)
+    path = readPackageSrcDir(packageName)
     nimCfg.add(&"--path:\"{path}\"\n")
     writeFile("nim.cfg", nimCfg)
 
@@ -198,39 +197,59 @@ proc removeFromNimCfg(name: string) =
     nimCfg = lines.join("\n")
     writeFile("nim.cfg", lines.join("\n"))
 
-proc fetchPackage(packageName: string, indent: string) =
+proc fetchPackage(argument: string, indent: string) =
   ## Main recursive function to fetch a package and its dependencies.
-  if dirExists(packageName):
-    return
+  
+  var packageName = argument
+  var isLocal = false
 
-  let packages = readFile("packages/packages.json").parseJson()
-  var package: JsonNode
-  for p in packages:
-    let name = p["name"].getStr()
-    if name.toLowerAscii() == packageName.toLowerAscii():
-      info &"Package found: {name}"
-      package = p
-      break
+  if packageName.endsWith(".nimble"):
+    if not fileExists(packageName):
+      quit(&"Local nimble file not found: {packageName}")
+    else:
+      echo "  Using local nimble file: ", packageName
+    isLocal = true
+    packageName = argument.extractFilename()
+    packageName.removeSuffix(".nimble")
+    addToNimCfg(packageName)
 
-  if package == nil:
-    quit "Package not found in global packages.json."
-
-  let 
-    name = package["name"].getStr()
-    methodKind = package["method"].getStr()
-    url = package["url"].getStr()
-
-  if name == "":
-    quit("Package not found in global packages.json.")
-
-  info &"Package: {name} {methodKind} {url}"
-  case methodKind:
-  of "git":
-    cmd(&"git clone --depth 1 {url} {name}")
-    addToNimCfg(package)
-    fetchDeps(name, indent & "  ")
+  if isLocal:
+    # Fetch dependencies from local nimble file.
+    fetchDeps(packageName, indent & "  ")
   else:
-    quit &"Unknown method {methodKind} to fetch package {name}"
+
+    if dirExists(packageName):
+      return
+
+    let packages = readFile("packages/packages.json").parseJson()
+    var package: JsonNode
+    for p in packages:
+      let name = p["name"].getStr()
+      if name.toLowerAscii() == packageName.toLowerAscii():
+        info &"Package found: {name}"
+        package = p
+        break
+
+    if package == nil:
+      quit "Package not found in global packages.json."
+
+    let 
+      name = package["name"].getStr()
+      methodKind = package["method"].getStr()
+      url = package["url"].getStr()
+
+    # Fetch from global packages.json.
+    if name == "":
+      quit("Package not found in global packages.json.")
+
+    info &"Package: {name} {methodKind} {url}"
+    case methodKind:
+    of "git":
+      cmd(&"git clone --depth 1 {url} {name}")
+      addToNimCfg(name)
+      fetchDeps(name, indent & "  ")
+    else:
+      quit &"Unknown method {methodKind} to fetch package {name}"
   
 proc installPackage(argument: string) =
   ## Install a package.
@@ -367,9 +386,14 @@ when isMainModule:
         argument = key
     of cmdLongOption, cmdShortOption:
       case key
-      of "help", "h": writeHelp()
-      of "version", "v": writeVersion()
-      of "verbose", "V": verbose = true
+      of "help", "h": 
+        writeHelp()
+        quit(0)
+      of "version", "v": 
+        writeVersion()
+        quit(0)
+      of "verbose", "V": 
+        verbose = true
     of cmdEnd: assert(false) # cannot happen
 
   case subcommand
