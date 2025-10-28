@@ -1,20 +1,31 @@
-import std/[os, json, times, osproc, parseopt, strutils, strformat, streams, locks]
-   
-const
-  WorkerCount = 10
-
+import std/[os, json, times, osproc, parseopt, strutils, strformat, streams, locks, sets]
+import 
+  curly,
+  zippy/ziparchives
+  
 var
   verbose: bool = false
   workspaceRoot: string 
   timeStarted: float64
-
   jobLock: Lock
-  jobQueue: array[100, string]
-  jobQueueStart: int = 0
-  jobQueueEnd: int = 0
+  jobQueue: seq[string]
+  jobQueueStart: int
   jobsInProgress: int
+  seen: HashSet[string]
 
-initLock(jobLock)
+const
+  WorkerCount = 6
+
+let
+  curl = newCurlPool(WorkerCount)
+
+template withLock(lock: Lock, body: untyped) =
+  acquire(lock)
+  {.gcsafe.}:
+    try:
+      body
+    finally:
+      release(lock)
 
 proc info(message: string) =
   ## Print information message if verbose is true.
@@ -25,21 +36,13 @@ proc cmd(command: string) =
   ## Run the command and print the output if it fails.
   let exeName = command.split(" ")[0]
   let args = command.split(" ")[1..^1]
-  let p = startProcess(exeName, args=args, options={poUsePath})
+  let p = startProcess(exeName, args=args)
   if p.waitForExit(-1) != 0:
     echo "> ", command
     echo p.peekableOutputStream().readAll()
     echo p.peekableErrorStream().readAll()
     quit("error code: " & $p.peekExitCode())
   p.close()
-
-template withLock(lock: Lock, body: untyped) =
-  acquire(lock)
-  {.gcsafe.}:
-    try:
-      body
-    finally:
-      release(lock)
 
 proc writeVersion() =
   ## Write the version of Nimby.
@@ -57,18 +60,6 @@ proc writeHelp() =
   echo "  tree       list all packages as a dependency tree"
   echo "  doctor     fix any linking issues with the packages"
   echo "  help       show this help message"
-
-proc cutBetween(str, a, b: string): string =
-  ## Cut a string by two substrings.
-  let
-    cutA = str.find(a)
-  if cutA == -1:
-    return ""
-  let
-    cutB = str.find(b, cutA)
-  if cutB == -1:
-    return ""
-  return str[cutA + a.len..<cutB]
 
 proc timeStart() =
   ## Start the timer.
@@ -91,20 +82,6 @@ proc findWorkspaceRoot(): string =
     currentDir = currentDir.parentDir
 
 proc fetchPackage(packageName: string, indent: string) {.gcsafe.}
-
-proc enqueuePackage(packageName: string) =
-  ## Add a package to the job queue.
-  withLock(jobLock):
-    jobQueue[jobQueueEnd] = packageName
-    inc jobQueueEnd
-
-proc popPackage(): string =
-  ## Pop a package from the job queue or return empty string.
-  withLock(jobLock):
-    if jobQueueEnd > jobQueueStart:
-      result = jobQueue[jobQueueStart]
-      inc jobQueueStart
-      inc jobsInProgress
 
 proc readPackageSrcDir(packageName: string): string =
   ## Read the source directory of a package.
@@ -144,6 +121,22 @@ proc readPackageDeps(packageName: string): seq[string] =
       result.add(dep)
   return result
 
+proc enqueuePackage(packageName: string) =
+  ## Add a package to the job queue if not already seen.
+  withLock(jobLock):
+    if packageName in seen:
+      return
+    seen.incl(packageName)
+    jobQueue.add(packageName)
+
+proc popPackage(): string =
+  ## Pop a package from the job queue or return empty string.
+  withLock(jobLock):
+    if jobQueueStart < jobQueue.len:
+      result = jobQueue[jobQueueStart]
+      inc jobQueueStart
+      inc jobsInProgress
+
 proc fetchDeps(packageName: string, indent: string) =
   let deps = readPackageDeps(packageName)
   for dep in deps:
@@ -157,7 +150,7 @@ proc worker(id: int) {.thread.} =
     if pkg.len == 0:
       var done: bool
       withLock(jobLock):
-        done = (jobsInProgress == 0)
+        done = (jobsInProgress == 0) and (jobQueueStart >= jobQueue.len)
       if done:
         break
       sleep(20)
@@ -175,28 +168,26 @@ proc worker(id: int) {.thread.} =
 
 proc addToNimCfg(package: JsonNode) =
   ## Add the package to the nim.cfg file.
-  withLock(jobLock):
-    if not fileExists("nim.cfg"):
-      writeFile("nim.cfg", "# Created by Nimby\n")
-    var nimCfg = readFile("nim.cfg")
-    let name = package["name"].getStr()
-    var path = name
-    # Parse the nimble file to get the srcDir
-    path = readPackageSrcDir(name)
-    nimCfg.add(&"--path:\"{path}\"\n")
-    writeFile("nim.cfg", nimCfg)
+  if not fileExists("nim.cfg"):
+    writeFile("nim.cfg", "# Created by Nimby\n")
+  var nimCfg = readFile("nim.cfg")
+  let name = package["name"].getStr()
+  var path = name
+  # Parse the nimble file to get the srcDir
+  path = readPackageSrcDir(name)
+  nimCfg.add(&"--path:\"{path}\"\n")
+  writeFile("nim.cfg", nimCfg)
 
 proc removeFromNimCfg(name: string) =
   ## Remove the package from the nim.cfg file.
-  withLock(jobLock):
-    var nimCfg = readFile("nim.cfg")
-    var lines = nimCfg.splitLines()
-    for i, line in lines:
-      if line.contains(&"--path:\"{name}/") or line.contains(&"--path:\"{name}\""):
-        lines.delete(i)
-        break
-    nimCfg = lines.join("\n")
-    writeFile("nim.cfg", lines.join("\n"))
+  var nimCfg = readFile("nim.cfg")
+  var lines = nimCfg.splitLines()
+  for i, line in lines:
+    if line.contains(&"--path:\"{name}/") or line.contains(&"--path:\"{name}\""):
+      lines.delete(i)
+      break
+  nimCfg = lines.join("\n")
+  writeFile("nim.cfg", lines.join("\n"))
 
 proc fetchPackage(packageName: string, indent: string) =
   ## Main recursive function to fetch a package and its dependencies.
@@ -226,9 +217,57 @@ proc fetchPackage(packageName: string, indent: string) =
   info &"Package: {name} {methodKind} {url}"
   case methodKind:
   of "git":
-    cmd(&"git clone --depth 1 {url} {name}")
-    addToNimCfg(package)
-    fetchDeps(name, indent & "  ")
+    # Prefer downloading archive via HTTP + unzip using zippy (like build4.yml).
+    if url.contains("github.com"):
+      var baseUrl = url.strip(chars={'/'})
+      if baseUrl.endsWith(".git"):
+        baseUrl = baseUrl[0..^(".git".len + 1)]
+      let zipUrl = baseUrl & "/archive/refs/heads/master.zip"
+      let zipFile = name & ".zip"
+      info &"Downloading: {zipUrl}"
+      let resp = curl.get(zipUrl)
+      if resp.code != 200:
+        echo "> HTTP GET failed ", resp.code
+        echo resp.body
+        quit("Failed to download: " & zipUrl)
+      writeFile(zipFile, resp.body)
+      let tempDir = ".nimby_extract_tmp_" & name
+      if dirExists(tempDir):
+        removeDir(tempDir)
+      info &"Unzipping to: {tempDir}"
+      extractAll(zipFile, tempDir)
+      try:
+        removeFile(zipFile)
+      except CatchableError:
+        discard
+      var movedOk = false
+      let expected = joinPath(tempDir, name & "-master")
+      if dirExists(expected) and (not dirExists(name)):
+        moveDir(expected, name)
+        movedOk = true
+      else:
+        # Try moving the first top-level directory if naming differs.
+        var top = ""
+        for kind, path in walkDir(tempDir):
+          if kind == pcDir:
+            top = path
+            break
+        if top.len > 0 and (not dirExists(name)):
+          moveDir(top, name)
+          movedOk = true
+      try:
+        removeDir(tempDir)
+      except CatchableError:
+        discard
+      if not movedOk:
+        quit "Could not locate extracted root folder."
+      addToNimCfg(package)
+      fetchDeps(name, indent & "  ")
+    else:
+      # Fallback to git clone if not GitHub.
+      cmd(&"git clone --depth 1 {url} {name}")
+      addToNimCfg(package)
+      fetchDeps(name, indent & "  ")
   else:
     quit &"Unknown method {methodKind} to fetch package {name}"
   
@@ -243,16 +282,16 @@ proc installPackage(argument: string) =
   if not fileExists("packages/packages.json"):
     info "Packages not found, cloning..."
     cmd("git clone https://github.com/nim-lang/packages.git --depth 1 packages")
-  
-  # init job queue
+
+  # Initialize queue and tracking
+  jobQueue = @[]
   jobQueueStart = 0
-  jobQueueEnd = 0
   jobsInProgress = 0
+  seen = initHashSet[string]()
+  initLock(jobLock)
 
-  # Ensure packages index is available before workers start
-  # and enqueue the initial package
+  # Enqueue root package and process with N workers in parallel
   enqueuePackage(argument)
-
   var threads: array[WorkerCount, Thread[int]]
   for i in 0..<WorkerCount:
     createThread(threads[i], worker, i)
@@ -338,9 +377,10 @@ proc checkPackage(packageName: string) =
 
 proc doctorPackage(argument: string) =
   ## Doctor the package.
-  # Walk through all the packages:
+  # walk though all the packages:
   # Make sure they have nim.cfg entry
   # Make sure they have all deps installed.
+  
   if argument != "":
     if not dirExists(argument):
       quit(&"Package `{argument}` not found.")
