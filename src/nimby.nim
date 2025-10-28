@@ -383,9 +383,14 @@ when isMainModule:
         argument = key
     of cmdLongOption, cmdShortOption:
       case key
-      of "help", "h": writeHelp()
-      of "version", "v": writeVersion()
-      of "verbose", "V": verbose = true
+      of "help", "h": 
+        writeHelp()
+        quit(0)
+      of "version", "v": 
+        writeVersion()
+        quit(0)
+      of "verbose", "V": 
+        verbose = true
     of cmdEnd: assert(false) # cannot happen
 
   case subcommand
