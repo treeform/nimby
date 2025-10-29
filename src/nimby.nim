@@ -15,12 +15,12 @@ var
   jobsInProgress: int
 
 type
-  NimbleFile = object
-    version: string
-    srcDir: string
-    deps: seq[(string, string, string)]
+  NimbleFile* = object
+    version*: string
+    srcDir*: string
+    deps*: seq[(string, string, string)]
 
-proc parseNimbleFile(fileName: string): NimbleFile =
+proc parseNimbleFile*(fileName: string): NimbleFile =
   ## Parse the nimble file and return a NimbleFile object.
   let nimble = readFile(fileName)
   for line in nimble.splitLines():
@@ -31,22 +31,22 @@ proc parseNimbleFile(fileName: string): NimbleFile =
     elif line.startsWith("requires"):
       var i = 9
       var dep, op, version = ""
-      while line[i] in [' ', '"'] and i < line.len:
+      while i < line.len and line[i] in [' ', '"']:
         inc i
-      while line[i] notin ['=', '<', '>', '~', '^', ' '] and i < line.len:
+      while i < line.len and line[i] notin ['=', '<', '>', '~', '^', ' ', '"']:
         dep.add(line[i])
         inc i
-      while line[i] in [' '] and i < line.len:
+      while i < line.len and line[i] in [' ']:
         inc i
-      while line[i] in ['=', '<', '>', '~', '^'] and i < line.len:
+      while i < line.len and line[i] in ['=', '<', '>', '~', '^']:
         op.add(line[i])
         inc i
-      while line[i] in [' '] and i < line.len:
+      while i < line.len and line[i] in [' ']:
         inc i
-      while line[i] notin ['"'] and i < line.len:
+      while i < line.len and line[i] notin ['"', ' ']:
         version.add(line[i])
         inc i
-      result.deps.add((dep, op, version))
+      result.deps.add((dep, op, version.strip()))
   return result
 
 initLock(jobLock)
