@@ -14,6 +14,41 @@ var
   jobQueueEnd: int = 0
   jobsInProgress: int
 
+type
+  NimbleFile = object
+    version: string
+    srcDir: string
+    deps: seq[(string, string, string)]
+
+proc parseNimbleFile(fileName: string): NimbleFile =
+  ## Parse the nimble file and return a NimbleFile object.
+  let nimble = readFile(fileName)
+  for line in nimble.splitLines():
+    if line.startsWith("version"):
+      result.version = line.split(" ")[^1].strip().replace("\"", "")
+    elif line.startsWith("srcDir"):
+      result.srcDir = line.split(" ")[^1].strip().replace("\"", "")
+    elif line.startsWith("requires"):
+      var i = 9
+      var dep, op, version = ""
+      while line[i] in [' ', '"'] and i < line.len:
+        inc i
+      while line[i] notin ['=', '<', '>', '~', '^', ' '] and i < line.len:
+        dep.add(line[i])
+        inc i
+      while line[i] in [' '] and i < line.len:
+        inc i
+      while line[i] in ['=', '<', '>', '~', '^'] and i < line.len:
+        op.add(line[i])
+        inc i
+      while line[i] in [' '] and i < line.len:
+        inc i
+      while line[i] notin ['"'] and i < line.len:
+        version.add(line[i])
+        inc i
+      result.deps.add((dep, op, version))
+  return result
+
 initLock(jobLock)
 
 proc info(message: string) =
@@ -110,39 +145,16 @@ proc readPackageSrcDir(packageName: string): string =
   ## Read the source directory of a package.
   if not fileExists(&"{packageName}/{packageName}.nimble"):
     return ""
-  let nimble = readFile(&"{packageName}/{packageName}.nimble")
-  for line in nimble.splitLines():
-    if line.startsWith("srcDir"):
-      return packageName & "/" & line.split(" ")[^1].strip().replace("\"", "")
-  return packageName
+  return parseNimbleFile(&"{packageName}/{packageName}.nimble").srcDir
 
 proc readPackageDeps(packageName: string): seq[string] =
   ## Read the dependencies of a package.
   if not fileExists(&"{packageName}/{packageName}.nimble"):
     return @[]
-  let nimble = readFile(&"{packageName}/{packageName}.nimble")
-  for line in nimble.splitLines():
-    if line.startsWith("requires"):
-      var i = 9
-      var dep = ""
-      while i < line.len and line[i] != ' ':
-        let c = line[i]
-        if c in ['>', '<', '=', '~', '^']:
-          break
-        elif c in ['"', ' ']:
-          inc i
-          continue
-        else:
-          dep.add(c)
-          inc i
-      if dep == "nim":
-        # Skip Nim dependency as that is managed by Nimby itself.
-        continue
-      if dep == "":
-        # Skip empty dependency.
-        continue
-      result.add(dep)
-  return result
+  for dep in parseNimbleFile(&"{packageName}/{packageName}.nimble").deps:
+    if dep[0] == "nim":
+      continue
+    result.add(dep[0])
 
 proc fetchDeps(packageName: string, indent: string) =
   let deps = readPackageDeps(packageName)
@@ -173,17 +185,21 @@ proc worker(id: int) {.thread.} =
     withLock(jobLock):
       dec jobsInProgress
 
-proc addToNimCfg(packageName: string) =
-  ## Add the package to the nim.cfg file.
+proc addDirToNimCfg(path: string) =
+  ## Add a directory to the nim.cfg file.
   withLock(jobLock):
     if not fileExists("nim.cfg"):
       writeFile("nim.cfg", "# Created by Nimby\n")
     var nimCfg = readFile("nim.cfg")
-    var path = packageName
-    # Parse the nimble file to get the srcDir
-    path = readPackageSrcDir(packageName)
+    if nimCfg.contains(&"--path:\"{path}\""):
+      return
     nimCfg.add(&"--path:\"{path}\"\n")
     writeFile("nim.cfg", nimCfg)
+
+proc addToNimCfg(packageName: string) =
+  ## Add the package to the nim.cfg file.
+  let path = parseNimbleFile(packageName & "/" & packageName & ".nimble").srcDir
+  addDirToNimCfg(packageName & "/" & path)
 
 proc removeFromNimCfg(name: string) =
   ## Remove the package from the nim.cfg file.
@@ -207,15 +223,25 @@ proc fetchPackage(argument: string, indent: string) =
     if not fileExists(packageName):
       quit(&"Local nimble file not found: {packageName}")
     else:
-      echo "  Using local nimble file: ", packageName
+      info &"Using local nimble file: {packageName}"
     isLocal = true
     packageName = argument.extractFilename()
     packageName.removeSuffix(".nimble")
-    addToNimCfg(packageName)
+    let packageDir = argument.parentDir().replace("\\", "/") & "/" & parseNimbleFile(argument).srcDir
+    addDirToNimCfg(packageDir)
+    isLocal = true
 
   if isLocal:
+
     # Fetch dependencies from local nimble file.
-    fetchDeps(packageName, indent & "  ")
+    for dep in parseNimbleFile(argument).deps:
+      let depName = dep[0]
+      let depOp = dep[1]
+      let depVersion = dep[2]
+      if depName == "nim":
+        continue
+      enqueuePackage(depName)
+
   else:
 
     if dirExists(packageName):
@@ -298,12 +324,8 @@ proc readPackageVersion(packageName: string): string =
   let fileName = &"{packageName}/{packageName}.nimble"
   if not fileExists(fileName):
     return ""
-  let nimble = readFile(&"{packageName}/{packageName}.nimble")
-  for line in nimble.splitLines():
-    if line.startsWith("version"):
-      return line.split(" ")[^1].strip().replace("\"", "")
-  return ""
-  
+  return parseNimbleFile(fileName).version
+
 proc listPackage(argument: string) =
   ## List all packages in the workspace.
   if argument != "":
