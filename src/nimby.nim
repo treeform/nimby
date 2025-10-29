@@ -1,11 +1,11 @@
 import std/[os, json, times, osproc, parseopt, strutils, strformat, streams, locks]
-   
+
 const
   WorkerCount = 10
 
 var
   verbose: bool = false
-  workspaceRoot: string 
+  workspaceRoot: string
   timeStarted: float64
 
   jobLock: Lock
@@ -31,19 +31,19 @@ proc parseNimbleFile(fileName: string): NimbleFile =
     elif line.startsWith("requires"):
       var i = 9
       var dep, op, version = ""
-      while line[i] in [' ', '"'] and i < line.len:
+      while i < line.len and line[i] in [' ', '"']:
         inc i
-      while line[i] notin ['=', '<', '>', '~', '^', ' '] and i < line.len:
+      while i < line.len and line[i] notin ['=', '<', '>', '~', '^', ' ']:
         dep.add(line[i])
         inc i
-      while line[i] in [' '] and i < line.len:
+      while i < line.len and line[i] in [' ']:
         inc i
-      while line[i] in ['=', '<', '>', '~', '^'] and i < line.len:
+      while i < line.len and line[i] in ['=', '<', '>', '~', '^']:
         op.add(line[i])
         inc i
-      while line[i] in [' '] and i < line.len:
+      while i < line.len and line[i] in [' ']:
         inc i
-      while line[i] notin ['"'] and i < line.len:
+      while i < line.len and line[i] notin ['"']:
         version.add(line[i])
         inc i
       result.deps.add((dep, op, version))
@@ -156,6 +156,13 @@ proc readPackageDeps(packageName: string): seq[string] =
       continue
     result.add(dep[0])
 
+proc readGitHash(packageName: string): string =
+  ## Read the git hash of a package.
+  let p = execCmdEx(&"git -C {packageName} rev-parse HEAD")
+  if p.exitCode != 0:
+    return ""
+  return p.output.strip()
+
 proc fetchDeps(packageName: string, indent: string) =
   let deps = readPackageDeps(packageName)
   for dep in deps:
@@ -215,8 +222,9 @@ proc removeFromNimCfg(name: string) =
 
 proc fetchPackage(argument: string, indent: string) =
   ## Main recursive function to fetch a package and its dependencies.
-  
+
   var packageName = argument
+  var packageGitHash = ""
   var isLocal = false
 
   if packageName.endsWith(".nimble"):
@@ -230,6 +238,11 @@ proc fetchPackage(argument: string, indent: string) =
     let packageDir = argument.parentDir().replace("\\", "/") & "/" & parseNimbleFile(argument).srcDir
     addDirToNimCfg(packageDir)
     isLocal = true
+
+  if packageName.contains("#"):
+    let parts = packageName.split("#")
+    packageName = parts[0]
+    packageGitHash = parts[1]
 
   if isLocal:
 
@@ -257,26 +270,31 @@ proc fetchPackage(argument: string, indent: string) =
         break
 
     if package == nil:
-      quit "Package not found in global packages.json."
+      quit &"Package `{packageName}` not found in global packages.json."
 
-    let 
+    let
       name = package["name"].getStr()
       methodKind = package["method"].getStr()
       url = package["url"].getStr()
 
-    # Fetch from global packages.json.
-    if name == "":
-      quit("Package not found in global packages.json.")
-
     info &"Package: {name} {methodKind} {url}"
     case methodKind:
     of "git":
-      cmd(&"git clone --depth 1 {url} {name}")
+      echo &"Cloning package: {argument}"
+      if packageGitHash.len > 0:
+        if dirExists(name):
+          return
+        cmd(&"git clone --no-checkout --depth 1 {url} {name}")
+        cmd(&"git -C {name} fetch --depth 1 origin {packageGitHash}")
+        cmd(&"git -C {name} checkout {packageGitHash}")
+      else:
+        cmd(&"git clone --depth 1 {url} {name}")
       addToNimCfg(name)
+      echo &"Installed package: {name}"
       fetchDeps(name, indent & "  ")
     else:
       quit &"Unknown method {methodKind} to fetch package {name}"
-  
+
 proc installPackage(argument: string) =
   ## Install a package.
   timeStart()
@@ -288,7 +306,7 @@ proc installPackage(argument: string) =
   if not fileExists("packages/packages.json"):
     info "Packages not found, cloning..."
     cmd("git clone https://github.com/nim-lang/packages.git --depth 1 packages")
-  
+
   # init job queue
   jobQueueStart = 0
   jobQueueEnd = 0
@@ -306,11 +324,11 @@ proc installPackage(argument: string) =
 
   timeEnd()
   quit(0)
-  
+
 proc updatePackage(argument: string) =
   ## Update a package.
   info &"Updating package: {argument}"
-  
+
 proc removePackage(argument: string) =
   ## Remove a package.
   info &"Removing package: {argument}"
@@ -333,19 +351,22 @@ proc listPackage(argument: string) =
       quit(&"Package `{argument}` not found.")
     let packageName = argument
     let packageVersion = readPackageVersion(packageName)
-    echo &"{packageName} {packageVersion}"
+    let gitHash = readGitHash(packageName)
+    echo &"{packageName} {packageVersion} {gitHash}"
   else:
     for kind, path in walkDir(workspaceRoot):
       if kind == pcDir:
         let packageName = path.extractFilename()
         let packageVersion = readPackageVersion(packageName)
-        echo &"{packageName} {packageVersion}"
-  
+        let gitHash = readGitHash(packageName)
+        echo &"{packageName} {packageVersion} {gitHash}"
+
 proc walkTreePackage(name, indent: string) =
   ## Walk the tree of a package.
   let packageName = name
   let packageVersion = readPackageVersion(packageName)
-  echo &"{indent}{packageName} {packageVersion}"
+  let gitHash = readGitHash(packageName)
+  echo &"{indent}{packageName} {packageVersion} {gitHash}"
   let deps = readPackageDeps(packageName)
   for dep in deps:
     walkTreePackage(dep, indent & "  ")
@@ -393,6 +414,72 @@ proc doctorPackage(argument: string) =
         let packageName = path.extractFilename()
         checkPackage(packageName)
 
+proc depsPackage(argument: string) =
+  ## List the dependencies of a package.
+
+  if not dirExists(argument):
+    quit(&"Package `{argument}` not found.")
+  let packageName = argument
+  var listedDeps: seq[string]
+  proc walkDeps(packageName: string) =
+    for dep in readPackageDeps(packageName):
+      if dep notin listedDeps:
+        let depVersion = readPackageVersion(dep)
+        let depGitHash = readGitHash(dep)
+        echo &"{dep} {depVersion} {depGitHash}"
+        listedDeps.add(dep)
+        walkDeps(dep)
+  walkDeps(packageName)
+
+  for dep in readPackageDeps(packageName):
+    if dep notin listedDeps:
+      let depVersion = readPackageVersion(dep)
+      let depGitHash = readGitHash(dep)
+      echo &"{dep} {depVersion} {depGitHash}"
+      listedDeps.add(dep)
+
+proc syncPackage(path: string) =
+  ## Sync the package.
+  info &"Syncing lock file: {path}"
+  timeStart()
+
+  if not fileExists("packages/packages.json"):
+    info "Packages not found, cloning..."
+    cmd("git clone https://github.com/nim-lang/packages.git --depth 1 packages")
+
+  let packages = readFile("packages/packages.json").parseJson()
+
+  if not fileExists(path):
+    quit(&"Package lock file `{path}` not found.")
+
+  for line in readFile(path).splitLines():
+    let parts = line.split(" ")
+    if parts.len != 3:
+      continue
+    let packageName = parts[0]
+    while dirExists(packageName):
+      echo &"Removing existing package: {packageName}"
+      moveDir(packageName, packageName & "_old")
+      removeDir(packageName & "_old")
+
+  for line in readFile(path).splitLines():
+    let parts = line.split(" ")
+    if parts.len != 3:
+      continue
+    let packageName = parts[0]
+    let packageVersion = parts[1]
+    let packageGitHash = parts[2]
+    enqueuePackage(packageName & "#" & packageGitHash)
+
+  var threads: array[WorkerCount, Thread[int]]
+  for i in 0 ..< WorkerCount:
+    createThread(threads[i], worker, i)
+  for i in 0 ..< WorkerCount:
+    joinThread(threads[i])
+
+  timeEnd()
+  quit(0)
+
 when isMainModule:
   workspaceRoot = findWorkspaceRoot()
   setCurrentDir(workspaceRoot)
@@ -408,23 +495,25 @@ when isMainModule:
         argument = key
     of cmdLongOption, cmdShortOption:
       case key
-      of "help", "h": 
+      of "help", "h":
         writeHelp()
         quit(0)
-      of "version", "v": 
+      of "version", "v":
         writeVersion()
         quit(0)
-      of "verbose", "V": 
+      of "verbose", "V":
         verbose = true
     of cmdEnd: assert(false) # cannot happen
 
   case subcommand
     of "": writeHelp()
     of "install": installPackage(argument)
+    of "sync": syncPackage(argument)
     of "update": updatePackage(argument)
-    of "remove": removePackage(argument)
+    of "remove", "uninstall": removePackage(argument)
     of "list": listPackage(argument)
     of "tree": treePackage(argument)
+    of "deps", "dependencies": depsPackage(argument)
     of "doctor": doctorPackage(argument)
     of "help": writeHelp()
     else:
