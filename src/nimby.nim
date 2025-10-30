@@ -1,4 +1,8 @@
-import std/[os, json, times, osproc, parseopt, strutils, strformat, streams, locks]
+
+
+# TO make nimby easy to install it only depends on system packages.
+import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
+  locks]
 
 const
   WorkerCount = 10
@@ -163,6 +167,14 @@ proc readGitHash(packageName: string): string =
     return ""
   return p.output.strip()
 
+proc readPackageUrl(packageName: string): string =
+  ## Read the url of a package.
+  let package = readFile("packages/packages.json").parseJson()
+  for p in package:
+    if p["name"].getStr() == packageName:
+      return p["url"].getStr()
+  return ""
+
 proc fetchDeps(packageName: string, indent: string) =
   let deps = readPackageDeps(packageName)
   for dep in deps:
@@ -239,12 +251,32 @@ proc fetchPackage(argument: string, indent: string) =
     addDirToNimCfg(packageDir)
     isLocal = true
 
-  if packageName.contains("#"):
-    let parts = packageName.split("#")
-    packageName = parts[0]
-    packageGitHash = parts[1]
+  if packageName.contains(" "):
+    let
+      parts = packageName.split(" ")
+      packageName = parts[0]
+      packageVersion = parts[1]
+      packageUrl = parts[2]
+      packageGitHash = parts[3]
 
-  if isLocal:
+    if not dirExists(packageName):
+      # Clone the package from the url at given git hash.
+      cmd(&"git clone --no-checkout --depth 1 {packageUrl} {packageName}")
+      cmd(&"git -C {packageName} fetch --depth 1 origin {packageGitHash}")
+      cmd(&"git -C {packageName} checkout {packageGitHash}")
+      echo &"Installed package: {packageName}"
+    else:
+      # Check to see if the package is at the given git hash.
+      let gitHash = readGitHash(packageName)
+      if gitHash != packageGitHash:
+        cmd(&"git -C {packageName} fetch --depth 1 origin {packageGitHash}")
+        cmd(&"git -C {packageName} checkout {packageGitHash}")
+        echo &"Updated package: {packageName}"
+      else:
+        info &"Package {packageName} is correct hash."
+    addToNimCfg(packageName)
+
+  elif isLocal:
 
     # Fetch dependencies from local nimble file.
     for dep in parseNimbleFile(argument).deps:
@@ -280,7 +312,7 @@ proc fetchPackage(argument: string, indent: string) =
     info &"Package: {name} {methodKind} {url}"
     case methodKind:
     of "git":
-      echo &"Cloning package: {argument}"
+      info &"Cloning package: {argument}"
       if packageGitHash.len > 0:
         if dirExists(name):
           return
@@ -351,15 +383,17 @@ proc listPackage(argument: string) =
       quit(&"Package `{argument}` not found.")
     let packageName = argument
     let packageVersion = readPackageVersion(packageName)
+    let gitUrl = readPackageUrl(packageName)
     let gitHash = readGitHash(packageName)
-    echo &"{packageName} {packageVersion} {gitHash}"
+    echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
   else:
     for kind, path in walkDir(workspaceRoot):
       if kind == pcDir:
         let packageName = path.extractFilename()
         let packageVersion = readPackageVersion(packageName)
+        let gitUrl = readPackageUrl(packageName)
         let gitHash = readGitHash(packageName)
-        echo &"{packageName} {packageVersion} {gitHash}"
+        echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
 
 proc walkTreePackage(name, indent: string) =
   ## Walk the tree of a package.
@@ -414,9 +448,8 @@ proc doctorPackage(argument: string) =
         let packageName = path.extractFilename()
         checkPackage(packageName)
 
-proc depsPackage(argument: string) =
-  ## List the dependencies of a package.
-
+proc lockPackage(argument: string) =
+  ## Generate a lock file for a package.
   if not dirExists(argument):
     quit(&"Package `{argument}` not found.")
   let packageName = argument
@@ -424,52 +457,28 @@ proc depsPackage(argument: string) =
   proc walkDeps(packageName: string) =
     for dep in readPackageDeps(packageName):
       if dep notin listedDeps:
-        let depVersion = readPackageVersion(dep)
-        let depGitHash = readGitHash(dep)
-        echo &"{dep} {depVersion} {depGitHash}"
+        let url = readPackageUrl(dep)
+        let version = readPackageVersion(dep)
+        let gitHash = readGitHash(dep)
+        echo &"{dep} {version} {url} {gitHash}"
         listedDeps.add(dep)
         walkDeps(dep)
   walkDeps(packageName)
-
-  for dep in readPackageDeps(packageName):
-    if dep notin listedDeps:
-      let depVersion = readPackageVersion(dep)
-      let depGitHash = readGitHash(dep)
-      echo &"{dep} {depVersion} {depGitHash}"
-      listedDeps.add(dep)
 
 proc syncPackage(path: string) =
   ## Sync the package.
   info &"Syncing lock file: {path}"
   timeStart()
 
-  if not fileExists("packages/packages.json"):
-    info "Packages not found, cloning..."
-    cmd("git clone https://github.com/nim-lang/packages.git --depth 1 packages")
-
-  let packages = readFile("packages/packages.json").parseJson()
-
   if not fileExists(path):
     quit(&"Package lock file `{path}` not found.")
 
   for line in readFile(path).splitLines():
     let parts = line.split(" ")
-    if parts.len != 3:
+    if parts.len != 4:
       continue
-    let packageName = parts[0]
-    while dirExists(packageName):
-      echo &"Removing existing package: {packageName}"
-      moveDir(packageName, packageName & "_old")
-      removeDir(packageName & "_old")
-
-  for line in readFile(path).splitLines():
-    let parts = line.split(" ")
-    if parts.len != 3:
-      continue
-    let packageName = parts[0]
-    let packageVersion = parts[1]
-    let packageGitHash = parts[2]
-    enqueuePackage(packageName & "#" & packageGitHash)
+    info "Syncing package: " & line
+    enqueuePackage(line)
 
   var threads: array[WorkerCount, Thread[int]]
   for i in 0 ..< WorkerCount:
@@ -513,7 +522,7 @@ when isMainModule:
     of "remove", "uninstall": removePackage(argument)
     of "list": listPackage(argument)
     of "tree": treePackage(argument)
-    of "deps", "dependencies": depsPackage(argument)
+    of "lock": lockPackage(argument)
     of "doctor": doctorPackage(argument)
     of "help": writeHelp()
     else:
