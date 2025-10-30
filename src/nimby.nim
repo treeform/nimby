@@ -5,11 +5,25 @@ import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
   locks]
 
 const
-  WorkerCount = 10
+  WorkerCount = 32
+
+type
+  Dependency* = object
+    name*: string
+    op*: string
+    version*: string
+
+  NimbleFile* = ref object
+    version*: string
+    srcDir*: string
+    installDir*: string
+    nimDependency*: Dependency
+    dependencies*: seq[Dependency]
 
 var
   verbose: bool = false
-  workspaceRoot: string
+  global: bool = false
+  updatedGlobalPackages: bool = false
   timeStarted: float64
 
   jobLock: Lock
@@ -17,41 +31,6 @@ var
   jobQueueStart: int = 0
   jobQueueEnd: int = 0
   jobsInProgress: int
-
-type
-  NimbleFile* = object
-    version*: string
-    srcDir*: string
-    deps*: seq[(string, string, string)]
-
-proc parseNimbleFile*(fileName: string): NimbleFile =
-  ## Parse the nimble file and return a NimbleFile object.
-  let nimble = readFile(fileName)
-  for line in nimble.splitLines():
-    if line.startsWith("version"):
-      result.version = line.split(" ")[^1].strip().replace("\"", "")
-    elif line.startsWith("srcDir"):
-      result.srcDir = line.split(" ")[^1].strip().replace("\"", "")
-    elif line.startsWith("requires"):
-      var i = 9
-      var dep, op, version = ""
-      while i < line.len and line[i] in [' ', '"']:
-        inc i
-      while i < line.len and line[i] notin ['=', '<', '>', '~', '^', ' ']:
-        dep.add(line[i])
-        inc i
-      while i < line.len and line[i] in [' ']:
-        inc i
-      while i < line.len and line[i] in ['=', '<', '>', '~', '^']:
-        op.add(line[i])
-        inc i
-      while i < line.len and line[i] in [' ']:
-        inc i
-      while i < line.len and line[i] notin ['"']:
-        version.add(line[i])
-        inc i
-      result.deps.add((dep, op, version.strip()))
-  return result
 
 initLock(jobLock)
 
@@ -65,37 +44,24 @@ proc cmd(command: string) =
   let exeName = command.split(" ")[0]
   let args = command.split(" ")[1..^1]
   let p = startProcess(exeName, args=args, options={poUsePath})
-  if p.waitForExit(-1) != 0:
+  if verbose:
     echo "> ", command
+  if p.waitForExit(-1) != 0:
+    if not verbose:
+      echo "> ", command
     echo p.peekableOutputStream().readAll()
     echo p.peekableErrorStream().readAll()
     quit("error code: " & $p.peekExitCode())
   p.close()
 
 template withLock(lock: Lock, body: untyped) =
+  ## Acquire the lock and execute the body.
   acquire(lock)
   {.gcsafe.}:
     try:
       body
     finally:
       release(lock)
-
-proc writeVersion() =
-  ## Write the version of Nimby.
-  echo "Nimby 0.1.0"
-
-proc writeHelp() =
-  ## Write the help message.
-  echo "Usage: nimby <subcommand> [options]"
-  echo "  ~ Minimal package manager for Nim. ~"
-  echo "Subcommands:"
-  echo "  install    install all Nim packages in the current directory"
-  echo "  update     update all Nim packages in the current directory"
-  echo "  uninstall  uninstall all Nim packages in the current directory"
-  echo "  list       list all Nim packages in the current directory"
-  echo "  tree       list all packages as a dependency tree"
-  echo "  doctor     fix any linking issues with the packages"
-  echo "  help       show this help message"
 
 proc cutBetween(str, a, b: string): string =
   ## Cut a string by two substrings.
@@ -118,25 +84,103 @@ proc timeEnd() =
   let timeEnded = epochTime()
   echo "Took: ", timeEnded - timeStarted, " seconds"
 
-proc findWorkspaceRoot(): string =
-  ## Finds the topmost nim.cfg file and returns the workspace root.
-  ## If no nim.cfg file is found, returns the current directory.
-  result = getCurrentDir()
-  var currentDir = result
-  # Find topmost nim.cfg file.
-  while currentDir != "/" and currentDir != "":
-    if fileExists(currentDir & "/nim.cfg"):
-      result = currentDir
-    currentDir = currentDir.parentDir
+proc writeVersion() =
+  ## Write the version of Nimby.
+  echo "Nimby 0.1.0"
 
-proc updatePackagesJson() =
+proc writeHelp() =
+  ## Write the help message.
+  echo "Usage: nimby <subcommand> [options]"
+  echo "  ~ Minimal package manager for Nim. ~"
+  echo "    -g, --global install the packages in the ~/.nimby/packages directory"
+  echo "    -v, --version print the version of Nimby"
+  echo "    -h, --help show this help message"
+  echo "    -V, --verbose print verbose output"
+  echo "Subcommands:"
+  echo "  install    install all Nim packages in the current directory"
+  echo "  update     update all Nim packages in the current directory"
+  echo "  remove     remove all Nim packages in the current directory"
+  echo "  list       list all Nim packages in the current directory"
+  echo "  tree       tree all packages as a dependency tree"
+  echo "  doctor     doctor all packages to fix any linking issues"
+  echo "  lock       generate a lock file for a package"
+  echo "  sync       sync a lock file for a package"
+  echo "  help       show this help message"
+
+proc getGlobalPackagesDir(): string =
+  ## Get the global packages directory.
+  "~/.nimby/pkgs".expandTilde()
+
+proc parseNimbleFile*(fileName: string): NimbleFile =
+  ## Parse the nimble file and return a NimbleFile object.
+  echo &"-------- Parsing nimble file: {fileName}"
+  let nimble = readFile(fileName)
+  result = NimbleFile(installDir: fileName.parentDir())
+  for line in nimble.splitLines():
+    if line.startsWith("version"):
+      result.version = line.split(" ")[^1].strip().replace("\"", "")
+    elif line.startsWith("srcDir"):
+      result.srcDir = line.split(" ")[^1].strip().replace("\"", "")
+    elif line.startsWith("requires"):
+      var i = 9
+      var name, op, version = ""
+      while i < line.len and line[i] in [' ', '"']:
+        inc i
+      while i < line.len and line[i] notin ['=', '<', '>', '~', '^', ' ']:
+        name.add(line[i])
+        inc i
+      while i < line.len and line[i] in [' ']:
+        inc i
+      while i < line.len and line[i] in ['=', '<', '>', '~', '^']:
+        op.add(line[i])
+        inc i
+      while i < line.len and line[i] in [' ']:
+        inc i
+      while i < line.len and line[i] notin ['"']:
+        version.add(line[i])
+        inc i
+      let dep = Dependency(
+        name: name,
+        op: op,
+        version: version
+      )
+      if name == "nim":
+        result.nimDependency = dep
+      else:
+        result.dependencies.add(dep)
+  return result
+
+proc getNimbleFile(name: string): NimbleFile =
+  ## Get the nimble file for a package.
+  let
+    localPath = &"{name}/{name}.nimble"
+    globalPath = getGlobalPackagesDir() / name / name & ".nimble"
+  if fileExists(localPath):
+    return parseNimbleFile(localPath)
+  if fileExists(globalPath):
+    return parseNimbleFile(globalPath)
+
+proc getGlobalPackages(): JsonNode =
   ## Update the packages.json file.
-  if not fileExists("packages/packages.json"):
-    cmd("git clone https://github.com/nim-lang/packages.git --depth 1 packages")
-  else:
-    cmd("git -C packages pull")
+  let globalPackagesDir = getGlobalPackagesDir() / "packages"
+  if not updatedGlobalPackages:
+    if not fileExists(globalPackagesDir / "packages.json"):
+      info "Packages.json not found, cloning..."
+      cmd(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
+    else:
+      info "Packages.json found, pulling..."
+      cmd(&"git -C {globalPackagesDir} pull")
+    updatedGlobalPackages = true
+  return readFile(globalPackagesDir & "/packages.json").parseJson()
 
-proc fetchPackage(argument: string, indent: string) {.gcsafe.}
+proc getGlobalPackage(packageName: string): JsonNode =
+  ## Get a global package from the global packages.json file.
+  let packages = getGlobalPackages()
+  for p in packages:
+    if p["name"].getStr() == packageName:
+      return p
+
+proc fetchPackage(argument: string) {.gcsafe.}
 
 proc enqueuePackage(packageName: string) =
   ## Add a package to the job queue.
@@ -152,21 +196,6 @@ proc popPackage(): string =
       inc jobQueueStart
       inc jobsInProgress
 
-proc readPackageSrcDir(packageName: string): string =
-  ## Read the source directory of a package.
-  if not fileExists(&"{packageName}/{packageName}.nimble"):
-    return ""
-  return parseNimbleFile(&"{packageName}/{packageName}.nimble").srcDir
-
-proc readPackageDeps(packageName: string): seq[string] =
-  ## Read the dependencies of a package.
-  if not fileExists(&"{packageName}/{packageName}.nimble"):
-    return @[]
-  for dep in parseNimbleFile(&"{packageName}/{packageName}.nimble").deps:
-    if dep[0] == "nim":
-      continue
-    result.add(dep[0])
-
 proc readGitHash(packageName: string): string =
   ## Read the git hash of a package.
   let p = execCmdEx(&"git -C {packageName} rev-parse HEAD")
@@ -176,17 +205,20 @@ proc readGitHash(packageName: string): string =
 
 proc readPackageUrl(packageName: string): string =
   ## Read the url of a package.
-  let package = readFile("packages/packages.json").parseJson()
-  for p in package:
+  let packages = getGlobalPackages()
+  for p in packages:
     if p["name"].getStr() == packageName:
       return p["url"].getStr()
-  return ""
+  quit(&"Package {packageName} not found in global packages.")
 
-proc fetchDeps(packageName: string, indent: string) =
-  let deps = readPackageDeps(packageName)
-  for dep in deps:
+proc fetchDeps(packageName: string) =
+  ## Fetch the dependencies of a package.
+  let package = getNimbleFile(packageName)
+  if package == nil:
+    quit(&"Can't fetch deps for Nimble file not found: {packageName}")
+  for dep in package.dependencies:
     info &"Dependency: {dep}"
-    enqueuePackage(dep)
+    enqueuePackage(dep.name)
 
 proc worker(id: int) {.thread.} =
   ## Worker thread that processes packages from the queue.
@@ -206,14 +238,15 @@ proc worker(id: int) {.thread.} =
         dec jobsInProgress
       continue
 
-    fetchPackage(pkg, "")
+    fetchPackage(pkg)
 
     withLock(jobLock):
       dec jobsInProgress
 
-proc addDirToNimCfg(path: string) =
+proc addConfigDir(path: string) =
   ## Add a directory to the nim.cfg file.
   withLock(jobLock):
+    let path = path.replace("\\", "/") # Always use linux style paths.
     if not fileExists("nim.cfg"):
       writeFile("nim.cfg", "# Created by Nimby\n")
     var nimCfg = readFile("nim.cfg")
@@ -222,115 +255,107 @@ proc addDirToNimCfg(path: string) =
     nimCfg.add(&"--path:\"{path}\"\n")
     writeFile("nim.cfg", nimCfg)
 
-proc addToNimCfg(packageName: string) =
-  ## Add the package to the nim.cfg file.
-  let path = parseNimbleFile(packageName & "/" & packageName & ".nimble").srcDir
-  addDirToNimCfg(packageName & "/" & path)
+proc addConfigPackage(name, path: string) =
+  ## Add a package to the nim.cfg file.
+  let package = getNimbleFile(name)
+  if package == nil:
+    quit(&"Nimble file not found: {name}")
+  addConfigDir(package.installDir / package.srcDir)
 
-proc removeFromNimCfg(name: string) =
+proc removeConfigDir(path: string) =
   ## Remove the package from the nim.cfg file.
   withLock(jobLock):
     var nimCfg = readFile("nim.cfg")
     var lines = nimCfg.splitLines()
     for i, line in lines:
-      if line.contains(&"--path:\"{name}/") or line.contains(&"--path:\"{name}\""):
+      if line.contains(&"--path:\"{path}\""):
         lines.delete(i)
         break
     nimCfg = lines.join("\n")
     writeFile("nim.cfg", lines.join("\n"))
 
-proc fetchPackage(argument: string, indent: string) =
+proc removeConfigPackage(name: string) =
+  ## Remove the package from the nim.cfg file.
+  let package = getNimbleFile(name)
+  if package == nil:
+    quit(&"Nimble file not found: {name}")
+  removeConfigDir(package.installDir / package.srcDir)
+
+proc fetchPackage(argument: string) =
   ## Main recursive function to fetch a package and its dependencies.
 
-  var packageName = argument
-  var packageGitHash = ""
-  var isLocal = false
+  if argument.endsWith(".nimble"):
 
-  if packageName.endsWith(".nimble"):
-    if not fileExists(packageName):
-      quit(&"Local nimble file not found: {packageName}")
+    # Packaged form a nimble file.
+    let nimblePath = argument
+    if not fileExists(nimblePath):
+      quit(&"Local nimble file not found: {nimblePath}")
     else:
-      info &"Using local nimble file: {packageName}"
-    isLocal = true
-    packageName = argument.extractFilename()
-    packageName.removeSuffix(".nimble")
-    let packageDir = argument.parentDir().replace("\\", "/") & "/" & parseNimbleFile(argument).srcDir
-    addDirToNimCfg(packageDir)
-    isLocal = true
+      info &"Using local nimble file: {nimblePath}"
+    let packageName = nimblePath.splitFile().name
+    let packageDir = nimblePath.parentDir() / parseNimbleFile(nimblePath).srcDir
+    addConfigDir(packageDir)
+    for dependency in getNimbleFile(packageName).dependencies:
+      enqueuePackage(dependency.name)
 
-  if packageName.contains(" "):
+  elif argument.contains(" "):
+
+    # Install a locked package.
     let
-      parts = packageName.split(" ")
+      parts = argument.split(" ")
       packageName = parts[0]
       packageVersion = parts[1]
       packageUrl = parts[2]
       packageGitHash = parts[3]
+      packagePath =
+        if global:
+          getGlobalPackagesDir() / packageName
+        else:
+          packageName
 
-    if not dirExists(packageName):
+    if not dirExists(packagePath):
       # Clone the package from the url at given git hash.
-      cmd(&"git clone --no-checkout --depth 1 {packageUrl} {packageName}")
-      cmd(&"git -C {packageName} fetch --depth 1 origin {packageGitHash}")
-      cmd(&"git -C {packageName} checkout {packageGitHash}")
+      cmd(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
+      cmd(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+      cmd(&"git -C {packagePath} checkout {packageGitHash}")
       echo &"Installed package: {packageName}"
     else:
       # Check to see if the package is at the given git hash.
       let gitHash = readGitHash(packageName)
       if gitHash != packageGitHash:
-        cmd(&"git -C {packageName} fetch --depth 1 origin {packageGitHash}")
-        cmd(&"git -C {packageName} checkout {packageGitHash}")
+        cmd(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+        cmd(&"git -C {packagePath} checkout {packageGitHash}")
         echo &"Updated package: {packageName}"
       else:
         info &"Package {packageName} is correct hash."
-    addToNimCfg(packageName)
-
-  elif isLocal:
-
-    # Fetch dependencies from local nimble file.
-    for dep in parseNimbleFile(argument).deps:
-      let depName = dep[0]
-      let depOp = dep[1]
-      let depVersion = dep[2]
-      if depName == "nim":
-        continue
-      enqueuePackage(depName)
+    addConfigDir(packagePath)
 
   else:
 
-    if dirExists(packageName):
-      return
-
-    let packages = readFile("packages/packages.json").parseJson()
-    var package: JsonNode
-    for p in packages:
-      let name = p["name"].getStr()
-      if name.toLowerAscii() == packageName.toLowerAscii():
-        info &"Package found: {name}"
-        package = p
-        break
-
+    # Install a global or local package.
+    let package = getGlobalPackage(argument)
     if package == nil:
-      quit &"Package `{packageName}` not found in global packages.json."
-
+      quit &"Package `{argument}` not found in global packages."
     let
       name = package["name"].getStr()
       methodKind = package["method"].getStr()
       url = package["url"].getStr()
-
     info &"Package: {name} {methodKind} {url}"
     case methodKind:
     of "git":
-      info &"Cloning package: {argument}"
-      if packageGitHash.len > 0:
-        if dirExists(name):
-          return
-        cmd(&"git clone --no-checkout --depth 1 {url} {name}")
-        cmd(&"git -C {name} fetch --depth 1 origin {packageGitHash}")
-        cmd(&"git -C {name} checkout {packageGitHash}")
+      let path =
+        if global:
+          getGlobalPackagesDir() / name
+        else:
+          name
+      info &"Cloning package: {argument} to {path}"
+      if dirExists(path):
+        info &"Package already exists: {path}"
       else:
-        cmd(&"git clone --depth 1 {url} {name}")
-      addToNimCfg(name)
+        cmd(&"git clone --depth 1 {url} {path}")
+      addConfigDir(path)
       echo &"Installed package: {name}"
-      fetchDeps(name, indent & "  ")
+      fetchDeps(name)
     else:
       quit &"Unknown method {methodKind} to fetch package {name}"
 
@@ -341,8 +366,6 @@ proc installPackage(argument: string) =
 
   if dirExists(argument):
     quit("Package already installed.")
-
-  updatePackagesJson()
 
   # init job queue
   jobQueueStart = 0
@@ -369,10 +392,15 @@ proc updatePackage(argument: string) =
 proc removePackage(argument: string) =
   ## Remove a package.
   info &"Removing package: {argument}"
-  removeFromNimCfg(argument)
-  if not dirExists(argument):
-    quit("Package not found.")
-  removeDir(argument)
+  removeConfigPackage(argument)
+  let package = getNimbleFile(argument)
+  if package == nil:
+    quit(&"Nimble file not found: {argument}")
+  let packagePath = package.installDir
+  if not dirExists(packagePath):
+    quit(&"Package not found: {packagePath}")
+  removeDir(packagePath)
+  echo &"Removed package: {argument}"
 
 proc readPackageVersion(packageName: string): string =
   ## Read the version of a package.
@@ -383,9 +411,6 @@ proc readPackageVersion(packageName: string): string =
 
 proc listPackage(argument: string) =
   ## List all packages in the workspace.
-
-  updatePackagesJson()
-
   if argument != "":
     if not dirExists(argument):
       quit(&"Package `{argument}` not found.")
@@ -393,15 +418,17 @@ proc listPackage(argument: string) =
     let packageVersion = readPackageVersion(packageName)
     let gitUrl = readPackageUrl(packageName)
     let gitHash = readGitHash(packageName)
-    echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
+    if packageVersion != "":
+      echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
   else:
-    for kind, path in walkDir(workspaceRoot):
+    for kind, path in walkDir("."):
       if kind == pcDir:
         let packageName = path.extractFilename()
         let packageVersion = readPackageVersion(packageName)
         let gitUrl = readPackageUrl(packageName)
         let gitHash = readGitHash(packageName)
-        echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
+        if packageVersion != "":
+          echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
 
 proc walkTreePackage(name, indent: string) =
   ## Walk the tree of a package.
@@ -409,37 +436,27 @@ proc walkTreePackage(name, indent: string) =
   let packageVersion = readPackageVersion(packageName)
   let gitHash = readGitHash(packageName)
   echo &"{indent}{packageName} {packageVersion} {gitHash}"
-  let deps = readPackageDeps(packageName)
-  for dep in deps:
-    walkTreePackage(dep, indent & "  ")
+  for dependency in getNimbleFile(packageName).dependencies:
+    walkTreePackage(dependency.name, indent & "  ")
 
 proc treePackage(argument: string) =
   ## Tree the package dependencies.
-
-  updatePackagesJson()
-
   if argument != "":
     if not dirExists(argument):
       quit(&"Package `{argument}` not found.")
     let packageName = argument
     walkTreePackage(packageName, "")
   else:
-    for kind, path in walkDir(workspaceRoot):
+    for kind, path in walkDir("."):
       if kind == pcDir:
         let packageName = path.extractFilename()
         walkTreePackage(packageName, "")
 
 proc checkPackage(packageName: string) =
   ## Check a package.
-
-  updatePackagesJson()
-
-  if not fileExists(&"{packageName}/{packageName}.nimble"):
-    return
-  let deps = readPackageDeps(packageName)
-  for dep in deps:
-    if not dirExists(dep):
-      echo &"Dependency `{dep}` not found for package `{packageName}`."
+  for dependency in getNimbleFile(packageName).dependencies:
+    if not dirExists(dependency.name):
+      echo &"Dependency `{dependency.name}` not found for package `{packageName}`."
   if not fileExists(&"nim.cfg"):
     quit(&"Package `nim.cfg` not found.")
   let nimCfg = readFile("nim.cfg")
@@ -449,18 +466,15 @@ proc checkPackage(packageName: string) =
 proc doctorPackage(argument: string) =
   ## Doctor the package.
   # Walk through all the packages:
-  # Make sure they have nim.cfg entry
+  # Make workspace root has a nim.cfg entry.
   # Make sure they have all deps installed.
-
-  updatePackagesJson()
-
   if argument != "":
     if not dirExists(argument):
       quit(&"Package `{argument}` not found.")
     let packageName = argument
     checkPackage(packageName)
   else:
-    for kind, path in walkDir(workspaceRoot):
+    for kind, path in walkDir("."):
       if kind == pcDir:
         let packageName = path.extractFilename()
         checkPackage(packageName)
@@ -472,14 +486,14 @@ proc lockPackage(argument: string) =
   let packageName = argument
   var listedDeps: seq[string]
   proc walkDeps(packageName: string) =
-    for dep in readPackageDeps(packageName):
-      if dep notin listedDeps:
-        let url = readPackageUrl(dep)
-        let version = readPackageVersion(dep)
-        let gitHash = readGitHash(dep)
-        echo &"{dep} {version} {url} {gitHash}"
-        listedDeps.add(dep)
-        walkDeps(dep)
+    for dependency in getNimbleFile(packageName).dependencies:
+      if dependency.name notin listedDeps:
+        let url = readPackageUrl(dependency.name)
+        let version = readPackageVersion(dependency.name)
+        let gitHash = readGitHash(dependency.name)
+        echo &"{dependency.name} {version} {url} {gitHash}"
+        listedDeps.add(dependency.name)
+        walkDeps(dependency.name)
   walkDeps(packageName)
 
 proc syncPackage(path: string) =
@@ -507,8 +521,6 @@ proc syncPackage(path: string) =
   quit(0)
 
 when isMainModule:
-  workspaceRoot = findWorkspaceRoot()
-  setCurrentDir(workspaceRoot)
 
   var subcommand, argument: string
   var p = initOptParser()
@@ -529,7 +541,17 @@ when isMainModule:
         quit(0)
       of "verbose", "V":
         verbose = true
-    of cmdEnd: assert(false) # cannot happen
+      of "global", "g":
+        echo "Using global packages directory."
+        global = true
+        if not dirExists(getGlobalPackagesDir()):
+          info &"Creating global packages directory: {getGlobalPackagesDir()}"
+          createDir(getGlobalPackagesDir())
+      else:
+        echo "Unknown option: " & key
+        quit(1)
+    of cmdEnd:
+      assert(false) # cannot happen
 
   case subcommand
     of "": writeHelp()
