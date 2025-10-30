@@ -260,7 +260,7 @@ proc addConfigDir(path: string) =
     nimCfg.add(&"--path:\"{path}\"\n")
     writeFile("nim.cfg", nimCfg)
 
-proc addConfigPackage(name, path: string) =
+proc addConfigPackage(name: string) =
   ## Add a package to the nim.cfg file.
   let package = getNimbleFile(name)
   if package == nil:
@@ -298,8 +298,7 @@ proc fetchPackage(argument: string) =
     else:
       info &"Using local nimble file: {nimblePath}"
     let packageName = nimblePath.splitFile().name
-    let packageDir = nimblePath.parentDir() / parseNimbleFile(nimblePath).srcDir
-    addConfigDir(packageDir)
+    addConfigPackage(packageName)
     for dependency in getNimbleFile(packageName).dependencies:
       enqueuePackage(dependency.name)
 
@@ -333,7 +332,7 @@ proc fetchPackage(argument: string) =
         echo &"Updated package: {packageName}"
       else:
         info &"Package {packageName} is correct hash."
-    addConfigDir(packagePath)
+    addConfigPackage(packageName)
 
   else:
 
@@ -358,7 +357,7 @@ proc fetchPackage(argument: string) =
         info &"Package already exists: {path}"
       else:
         cmd(&"git clone --depth 1 {url} {path}")
-      addConfigDir(path)
+      addConfigPackage(name)
       echo &"Installed package: {name}"
       fetchDeps(name)
     else:
