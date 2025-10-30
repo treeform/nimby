@@ -43,16 +43,20 @@ proc cmd(command: string) =
   ## Run the command and print the output if it fails.
   let exeName = command.split(" ")[0]
   let args = command.split(" ")[1..^1]
-  let p = startProcess(exeName, args=args, options={poUsePath})
-  if verbose:
-    echo "> ", command
-  if p.waitForExit(-1) != 0:
-    if not verbose:
+  try:
+    let p = startProcess(exeName, args=args, options={poUsePath})
+    if verbose:
       echo "> ", command
-    echo p.peekableOutputStream().readAll()
-    echo p.peekableErrorStream().readAll()
-    quit("error code: " & $p.peekExitCode())
-  p.close()
+    if p.waitForExit(-1) != 0:
+      if not verbose:
+        echo "> ", command
+      echo p.peekableOutputStream().readAll()
+      echo p.peekableErrorStream().readAll()
+      quit("error code: " & $p.peekExitCode())
+    p.close()
+  except OSError:
+    echo "> ", command
+    quit("error: " & $getCurrentExceptionMsg())
 
 template withLock(lock: Lock, body: untyped) =
   ## Acquire the lock and execute the body.
@@ -197,10 +201,13 @@ proc popPackage(): string =
 
 proc readGitHash(packageName: string): string =
   ## Read the git hash of a package.
-  let p = execCmdEx(&"git -C {packageName} rev-parse HEAD")
-  if p.exitCode != 0:
-    return ""
-  return p.output.strip()
+  let globalPath = getGlobalPackagesDir() / packageName
+  for path in [packageName, globalPath]:
+    if dirExists(path):
+      let p = execCmdEx(&"git -C {path} rev-parse HEAD")
+      if p.exitCode == 0:
+        return p.output.strip()
+  return ""
 
 proc readPackageUrl(packageName: string): string =
   ## Read the url of a package.
@@ -208,7 +215,6 @@ proc readPackageUrl(packageName: string): string =
   for p in packages:
     if p["name"].getStr() == packageName:
       return p["url"].getStr()
-  quit(&"Package {packageName} not found in global packages.")
 
 proc fetchDeps(packageName: string) =
   ## Fetch the dependencies of a package.
@@ -401,55 +407,47 @@ proc removePackage(argument: string) =
   removeDir(packagePath)
   echo &"Removed package: {argument}"
 
-proc readPackageVersion(packageName: string): string =
-  ## Read the version of a package.
-  let fileName = &"{packageName}/{packageName}.nimble"
-  if not fileExists(fileName):
-    return ""
-  return parseNimbleFile(fileName).version
-
 proc listPackage(argument: string) =
-  ## List all packages in the workspace.
-  if argument != "":
-    if not dirExists(argument):
-      quit(&"Package `{argument}` not found.")
+  ## List a package.
+  let nimbleFile = getNimbleFile(argument)
+  if nimbleFile != nil:
     let packageName = argument
-    let packageVersion = readPackageVersion(packageName)
+    let packageVersion = nimbleFile.version
     let gitUrl = readPackageUrl(packageName)
     let gitHash = readGitHash(packageName)
-    if packageVersion != "":
-      echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
+    echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
+
+proc listPackages(argument: string) =
+  ## List all packages in the workspace.
+  if argument != "":
+    listPackage(argument)
   else:
-    for kind, path in walkDir("."):
-      if kind == pcDir:
-        let packageName = path.extractFilename()
-        let packageVersion = readPackageVersion(packageName)
-        let gitUrl = readPackageUrl(packageName)
-        let gitHash = readGitHash(packageName)
-        if packageVersion != "":
-          echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
+    for dir in [".", getGlobalPackagesDir()]:
+      echo &"-------- Walking directory: {dir}"
+      for kind, path in walkDir(dir):
+        if kind == pcDir:
+          listPackage(path.extractFilename())
 
-proc walkTreePackage(name, indent: string) =
+proc treePackage(name, indent: string) =
   ## Walk the tree of a package.
-  let packageName = name
-  let packageVersion = readPackageVersion(packageName)
-  let gitHash = readGitHash(packageName)
-  echo &"{indent}{packageName} {packageVersion} {gitHash}"
-  for dependency in getNimbleFile(packageName).dependencies:
-    walkTreePackage(dependency.name, indent & "  ")
+  let nimbleFile = getNimbleFile(name)
+  if nimbleFile != nil:
+    let packageName = name
+    let packageVersion = nimbleFile.version
+    echo &"{indent}{packageName} {packageVersion}"
+    for dependency in nimbleFile.dependencies:
+      treePackage(dependency.name, indent & "  ")
 
-proc treePackage(argument: string) =
+proc treePackages(argument: string) =
   ## Tree the package dependencies.
   if argument != "":
-    if not dirExists(argument):
-      quit(&"Package `{argument}` not found.")
-    let packageName = argument
-    walkTreePackage(packageName, "")
+    treePackage(argument, "")
   else:
-    for kind, path in walkDir("."):
-      if kind == pcDir:
-        let packageName = path.extractFilename()
-        walkTreePackage(packageName, "")
+    for dir in [".", getGlobalPackagesDir()]:
+      echo &"-------- Walking directory: {dir}"
+      for kind, path in walkDir(dir):
+        if kind == pcDir:
+          treePackage(path.extractFilename(), "")
 
 proc checkPackage(packageName: string) =
   ## Check a package.
@@ -480,20 +478,22 @@ proc doctorPackage(argument: string) =
 
 proc lockPackage(argument: string) =
   ## Generate a lock file for a package.
-  if not dirExists(argument):
-    quit(&"Package `{argument}` not found.")
-  let packageName = argument
-  var listedDeps: seq[string]
-  proc walkDeps(packageName: string) =
-    for dependency in getNimbleFile(packageName).dependencies:
-      if dependency.name notin listedDeps:
-        let url = readPackageUrl(dependency.name)
-        let version = readPackageVersion(dependency.name)
-        let gitHash = readGitHash(dependency.name)
-        echo &"{dependency.name} {version} {url} {gitHash}"
-        listedDeps.add(dependency.name)
-        walkDeps(dependency.name)
-  walkDeps(packageName)
+  for packageName in [argument, getGlobalPackagesDir() / argument]:
+    let nimbleFile = getNimbleFile(packageName)
+    if nimbleFile == nil:
+      continue
+    var listedDeps: seq[string]
+    proc walkDeps(packageName: string) =
+      for dependency in getNimbleFile(packageName).dependencies:
+        if dependency.name notin listedDeps:
+          let url = readPackageUrl(dependency.name)
+          let version = getNimbleFile(dependency.name).version
+          let gitHash = readGitHash(dependency.name)
+          echo &"{dependency.name} {version} {url} {gitHash}"
+          listedDeps.add(dependency.name)
+          walkDeps(dependency.name)
+    walkDeps(packageName)
+    break
 
 proc syncPackage(path: string) =
   ## Sync the package.
@@ -558,8 +558,8 @@ when isMainModule:
     of "sync": syncPackage(argument)
     of "update": updatePackage(argument)
     of "remove", "uninstall": removePackage(argument)
-    of "list": listPackage(argument)
-    of "tree": treePackage(argument)
+    of "list": listPackages(argument)
+    of "tree": treePackages(argument)
     of "lock": lockPackage(argument)
     of "doctor": doctorPackage(argument)
     of "help": writeHelp()
