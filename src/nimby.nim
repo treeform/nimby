@@ -113,7 +113,6 @@ proc getGlobalPackagesDir(): string =
 
 proc parseNimbleFile*(fileName: string): NimbleFile =
   ## Parse the nimble file and return a NimbleFile object.
-  echo &"-------- Parsing nimble file: {fileName}"
   let nimble = readFile(fileName)
   result = NimbleFile(installDir: fileName.parentDir())
   for line in nimble.splitLines():
