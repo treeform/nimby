@@ -129,6 +129,13 @@ proc findWorkspaceRoot(): string =
       result = currentDir
     currentDir = currentDir.parentDir
 
+proc updatePackagesJson() =
+  ## Update the packages.json file.
+  if not fileExists("packages/packages.json"):
+    cmd("git clone https://github.com/nim-lang/packages.git --depth 1 packages")
+  else:
+    cmd("git -C packages pull")
+
 proc fetchPackage(argument: string, indent: string) {.gcsafe.}
 
 proc enqueuePackage(packageName: string) =
@@ -335,9 +342,7 @@ proc installPackage(argument: string) =
   if dirExists(argument):
     quit("Package already installed.")
 
-  if not fileExists("packages/packages.json"):
-    info "Packages not found, cloning..."
-    cmd("git clone https://github.com/nim-lang/packages.git --depth 1 packages")
+  updatePackagesJson()
 
   # init job queue
   jobQueueStart = 0
@@ -378,6 +383,9 @@ proc readPackageVersion(packageName: string): string =
 
 proc listPackage(argument: string) =
   ## List all packages in the workspace.
+
+  updatePackagesJson()
+
   if argument != "":
     if not dirExists(argument):
       quit(&"Package `{argument}` not found.")
@@ -407,6 +415,9 @@ proc walkTreePackage(name, indent: string) =
 
 proc treePackage(argument: string) =
   ## Tree the package dependencies.
+
+  updatePackagesJson()
+
   if argument != "":
     if not dirExists(argument):
       quit(&"Package `{argument}` not found.")
@@ -420,6 +431,9 @@ proc treePackage(argument: string) =
 
 proc checkPackage(packageName: string) =
   ## Check a package.
+
+  updatePackagesJson()
+
   if not fileExists(&"{packageName}/{packageName}.nimble"):
     return
   let deps = readPackageDeps(packageName)
@@ -437,6 +451,9 @@ proc doctorPackage(argument: string) =
   # Walk through all the packages:
   # Make sure they have nim.cfg entry
   # Make sure they have all deps installed.
+
+  updatePackagesJson()
+
   if argument != "":
     if not dirExists(argument):
       quit(&"Package `{argument}` not found.")
