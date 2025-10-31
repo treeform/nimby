@@ -24,7 +24,7 @@ jobs:
       - name: Print Nimby Folder
         run: ls "$HOME/.nimby"
 
-      - name: Print Nimby nim/bin folder
+      - name: Print Nimby nim folder
         run: ls "$HOME/.nimby/nim"
 
       - name: Print Nimby nim/bin folder
