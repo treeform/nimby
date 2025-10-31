@@ -1,0 +1,33 @@
+
+name: Test install Nim
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: treeform/setup-nim-action@v2
+
+      - name: Compile Nimby
+        run: nim c --mm:atomicArc -d:release src/nimby.nim
+
+      - name: Test Speed
+        run: nim use 2.2.6
+
+      - name: Add Nim to PATH
+        run: |
+          export PATH="/home/runner/.nimby/nim/bin:$PATH"
+          echo "PATH=$PATH" >> $env:GITHUB_ENV
+
+      - name: Print Nim version
+        run: nim --version
+
+      - name: Print Which Nim
+        run: which nim
