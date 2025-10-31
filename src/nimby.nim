@@ -422,7 +422,6 @@ proc listPackages(argument: string) =
     listPackage(argument)
   else:
     for dir in [".", getGlobalPackagesDir()]:
-      echo &"-------- Walking directory: {dir}"
       for kind, path in walkDir(dir):
         if kind == pcDir:
           listPackage(path.extractFilename())
@@ -443,7 +442,6 @@ proc treePackages(argument: string) =
     treePackage(argument, "")
   else:
     for dir in [".", getGlobalPackagesDir()]:
-      echo &"-------- Walking directory: {dir}"
       for kind, path in walkDir(dir):
         if kind == pcDir:
           treePackage(path.extractFilename(), "")
