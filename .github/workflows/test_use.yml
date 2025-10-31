@@ -31,3 +31,8 @@ jobs:
 
       - name: List Dependencies in Tree View
         run: ./nimby tree fidget2
+
+      - name: Test Fidget2 Compilation
+        run: |
+          cd fidget2
+          nim c -r src/fidget2.nim

@@ -549,7 +549,6 @@ proc installNim(nimVersion: string) =
           else:
             moveFile(extractedDir / name, installDir / name)
         removeDir(extractedDir)
-      echo "Installed Nim {nimVersion} to: {installDir}"
 
     elif defined(macosx):
       let url = &"https://nim-lang.org/download/nim-{nimVersion}.tar.xz"
@@ -564,7 +563,6 @@ proc installNim(nimVersion: string) =
       cmd("./koch boot -d:release --skipUserCfg --skipParentCfg --hints:off")
       echo "Building the Koch tools"
       cmd("./koch tools --skipUserCfg --skipParentCfg --hints:off")
-      echo "Installed Nim {nimVersion} to: {installDir}"
 
     elif defined(linux):
       let url = &"https://nim-lang.org/download/nim-{nimVersion}-linux_x64.tar.xz"
@@ -572,7 +570,6 @@ proc installNim(nimVersion: string) =
       cmd(&"curl -sSL {url} -o nim.tar.xz")
       echo "Extracting the Nim compiler"
       cmd("tar xf nim.tar.xz --strip-components=1")
-      echo "Installed Nim {nimVersion} to: {installDir}"
 
     else:
       quit "unsupported platform for Nim installation"
@@ -581,17 +578,11 @@ proc installNim(nimVersion: string) =
     echo &"Installed Nim {nimVersion} to: {installDir}"
 
   # copy installDir/nim-{nimVersion} to installDir/bin
-  let versionDir = nimbyDir / "nim-" & nimVersion
-  let versionNimDir = versionDir / "bin"
-  let versionLibDir = versionDir / "lib"
-  let binDir = nimbyDir / "bin"
-  let libDir = nimbyDir / "lib"
-  removeDir(binDir)
-  copyDir(versionNimDir, binDir)
-  info &"Copied {versionNimDir} to {binDir}"
-  removeDir(libDir)
-  copyDir(versionLibDir, libDir)
-  info &"Copied {versionLibDir} to {libDir}"
+  let versionNimDir = nimbyDir / "nim-" & nimVersion
+  let globalNimDir = nimbyDir / "nim"
+  removeDir(globalNimDir)
+  copyDir(versionNimDir, globalNimDir)
+  info &"Copied {versionNimDir} to {globalNimDir}"
 
   # COPY nimby (the current executable) to the Nim bin directory.
   let nimbyPath = getAppFilename()
@@ -605,10 +596,10 @@ proc installNim(nimVersion: string) =
     info &"Copied {nimbyPath} to {nimbyDest}"
 
   # Tell the user a single PATH change they can run now.
-  let binPath = nimbyDir / "bin"
+  let binPath = nimbyDir / "nim" / "bin"
   echo "Add Nim to your PATH for this session with one of:"
   when defined(windows):
-    let winBin = (nimbyDir.replace("/", "\\") & "\\bin")
+    let winBin = (binPath.replace("/", "\\"))
     echo &"$env:PATH = \"{winBin};$env:PATH\"   # PowerShell"
   else:
     echo &"export PATH=\"{binPath}:$PATH\"      # bash/zsh"
