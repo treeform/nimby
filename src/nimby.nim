@@ -584,6 +584,10 @@ proc installNim(nimVersion: string) =
   copyDir(versionNimDir, globalNimDir)
   info &"Copied {versionNimDir} to {globalNimDir}"
 
+  when not defined(windows):
+    # Make sure the Nim binary is executable.
+    cmd(&"chmod +x {globalNimDir}/bin/nim")
+
   # COPY nimby (the current executable) to the Nim bin directory.
   # let nimbyPath = getAppFilename()
   # let nimbyDest = nimbyDir / "nim" / "bin" / "nimby"
