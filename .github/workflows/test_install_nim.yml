@@ -21,6 +21,12 @@ jobs:
       - name: Test Speed
         run: src/nimby use -V 2.2.6
 
+      - name: Print Nimby Folder
+        run: ls "$HOME/.nimby"
+
+      - name: Print Nimby nim/bin folder
+        run: ls "$HOME/.nimby/nim/bin"
+
       - name: Add Nim to PATH
         run: echo "$HOME/.nimby/nim/bin" >> "$GITHUB_PATH"
 
