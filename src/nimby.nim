@@ -569,7 +569,7 @@ proc installNim(nimVersion: string) =
       echo &"Downloading: {url}"
       cmd(&"curl -sSL {url} -o nim.tar.xz")
       echo "Extracting the Nim compiler"
-      cmd("tar xf nim.tar.xz")
+      cmd("tar xf nim.tar.xz --strip-components=1")
 
     else:
       quit "unsupported platform for Nim installation"
@@ -584,16 +584,9 @@ proc installNim(nimVersion: string) =
   copyDir(versionNimDir, globalNimDir)
   info &"Copied {versionNimDir} to {globalNimDir}"
 
-  # COPY nimby (the current executable) to the Nim bin directory.
-  # let nimbyPath = getAppFilename()
-  # let nimbyDest = nimbyDir / "nim" / "bin" / "nimby"
-  # if nimbyPath == nimbyDest:
-  #   info &"Nimby is already in the Nim bin directory: {nimbyDest}"
-  # else:
-  #   if fileExists(nimbyDest):
-  #     removeFile(nimbyDest)
-  #   echo &"Copying {nimbyPath} to {nimbyDest}"
-  #   copyFile(nimbyPath, nimbyDest)
+  when not defined(windows):
+    # Make sure the Nim binary is executable.
+    cmd(&"chmod +x {globalNimDir}/bin/nim")
 
   # Tell the user a single PATH change they can run now.
   let binPath = nimbyDir / "nim" / "bin"

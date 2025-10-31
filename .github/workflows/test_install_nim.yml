@@ -18,8 +18,17 @@ jobs:
       - name: Compile Nimby
         run: nim c --mm:atomicArc -d:release src/nimby.nim
 
-      - name: Test Speed
+      - name: Install Nim Compiler
         run: src/nimby use -V 2.2.6
+
+      - name: Print Nimby Folder
+        run: ls "$HOME/.nimby"
+
+      - name: Print Nimby nim folder
+        run: ls "$HOME/.nimby/nim"
+
+      - name: Print Nimby nim/bin folder
+        run: ls "$HOME/.nimby/nim/bin"
 
       - name: Add Nim to PATH
         run: echo "$HOME/.nimby/nim/bin" >> "$GITHUB_PATH"
@@ -27,7 +36,10 @@ jobs:
       - name: Print PATH
         run: echo "$PATH"
 
-      - name: Print Nim version
+      - name: Print Nim version (Full Path)
+        run: $HOME/.nimby/nim/bin/nim --version
+
+      - name: Print Nim version (Normal)
         run: nim --version
 
       - name: Print Which Nim
