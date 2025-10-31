@@ -518,6 +518,85 @@ proc syncPackage(path: string) =
   timeEnd()
   quit(0)
 
+
+proc installNim(nimVersion: string) =
+  ## Install a specific version of Nim.
+  info &"Installing Nim: {nimVersion}"
+  let nimbyDir = "~/.nimby".expandTilde()
+  if not dirExists(nimbyDir):
+    createDir(nimbyDir)
+  let installDir = nimbyDir / ("nim-" & nimVersion)
+  if dirExists(installDir):
+    echo &"Nim {nimVersion} already installed at: {installDir}"
+  else:
+    createDir(installDir)
+
+    let previousDir = getCurrentDir()
+    setCurrentDir(installDir)
+
+    when defined(windows):
+      let url = &"https://nim-lang.org/download/nim-{nimVersion}_x64.zip"
+      echo &"Downloading: {url}"
+      cmd(&"curl -sSL {url} -o nim.zip")
+      # Use PowerShell to extract to current directory for wider availability on Windows
+      cmd("powershell -NoProfile -Command Expand-Archive -Force -Path nim.zip -DestinationPath .")
+      let extractedDir = &"nim-{nimVersion}"
+      if dirExists(extractedDir):
+        for kind, path in walkDir(extractedDir):
+          let name = path.extractFilename()
+          if kind == pcDir:
+            moveDir(extractedDir / name, installDir / name)
+          else:
+            moveFile(extractedDir / name, installDir / name)
+        removeDir(extractedDir)
+      echo "Installed Nim {nimVersion} to: {installDir}"
+
+    elif defined(macosx):
+      let url = &"https://nim-lang.org/download/nim-{nimVersion}.tar.xz"
+      echo &"Downloading: {url}"
+      cmd(&"curl -sSL {url} -o nim.tar.xz")
+      cmd("tar xf nim.tar.xz --strip-components=1")
+      echo "Building the Nim compiler"
+      cmd("./build.sh")
+      echo "Building the Koch tool"
+      cmd("./bin/nim c --noNimblePath --skipUserCfg --skipParentCfg --hints:off koch")
+      echo "Booting the Nim compiler"
+      cmd("./koch boot -d:release --skipUserCfg --skipParentCfg --hints:off")
+      echo "Building the Koch tools"
+      cmd("./koch tools --skipUserCfg --skipParentCfg --hints:off")
+      echo "Installed Nim {nimVersion} to: {installDir}"
+
+    elif defined(linux):
+      let url = &"https://nim-lang.org/download/nim-{nimVersion}-linux_x64.tar.xz"
+      echo &"Downloading: {url}"
+      cmd(&"curl -sSL {url} -o nim.tar.xz")
+      echo "Extracting the Nim compiler"
+      cmd("tar xf nim.tar.xz --strip-components=1")
+      echo "Installed Nim {nimVersion} to: {installDir}"
+
+    else:
+      quit "unsupported platform for Nim installation"
+
+    setCurrentDir(previousDir)
+    echo &"Installed Nim {nimVersion} to: {installDir}"
+
+  # Tell the user a single PATH change they can run now.
+  let binPath = installDir / "bin"
+  echo "Add Nim to your PATH for this session with one of:"
+  echo &"  export PATH=\"{binPath}:$PATH\"    # bash/zsh"
+  echo &"  fish_add_path {binPath}              # fish"
+  when defined(windows):
+    let winBin = (installDir.replace("/", "\\") & "\\bin")
+    echo &"  $env:PATH = \"{winBin};$env:PATH\"   # PowerShell"
+
+  # COPY nimby (the current executable) to the Nim bin directory.
+  let nimbyPath = getAppFilename()
+  let nimbyDest = installDir / "bin" / "nimby"
+  if fileExists(nimbyDest):
+    removeFile(nimbyDest)
+  copyFile(nimbyPath, nimbyDest)
+  echo &"Copied {nimbyPath} to {nimbyDest}"
+
 when isMainModule:
 
   var subcommand, argument: string
@@ -560,6 +639,7 @@ when isMainModule:
     of "list": listPackages(argument)
     of "tree": treePackages(argument)
     of "lock": lockPackage(argument)
+    of "use": installNim(argument)
     of "doctor": doctorPackage(argument)
     of "help": writeHelp()
     else:
