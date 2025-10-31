@@ -19,7 +19,7 @@ jobs:
         run: nim c --mm:atomicArc -d:release src/nimby.nim
 
       - name: Test Speed
-        run: nim use 2.2.6
+        run: nimby use 2.2.6
 
       - name: Add Nim to PATH
         run: |
