@@ -592,8 +592,8 @@ proc installNim(nimVersion: string) =
   else:
     if fileExists(nimbyDest):
       removeFile(nimbyDest)
+    echo &"Copying {nimbyPath} to {nimbyDest}"
     copyFile(nimbyPath, nimbyDest)
-    info &"Copied {nimbyPath} to {nimbyDest}"
 
   # Tell the user a single PATH change they can run now.
   let binPath = nimbyDir / "nim" / "bin"
