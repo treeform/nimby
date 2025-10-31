@@ -24,6 +24,9 @@ jobs:
       - name: Add Nim to PATH
         run: echo "$HOME/.nimby/nim/bin" >> "$GITHUB_PATH"
 
+      - name: Print PATH
+        run: echo "$PATH"
+
       - name: Print Nim version
         run: nim --version
 
