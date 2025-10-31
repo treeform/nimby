@@ -588,17 +588,6 @@ proc installNim(nimVersion: string) =
     # Make sure the Nim binary is executable.
     cmd(&"chmod +x {globalNimDir}/bin/nim")
 
-  # COPY nimby (the current executable) to the Nim bin directory.
-  # let nimbyPath = getAppFilename()
-  # let nimbyDest = nimbyDir / "nim" / "bin" / "nimby"
-  # if nimbyPath == nimbyDest:
-  #   info &"Nimby is already in the Nim bin directory: {nimbyDest}"
-  # else:
-  #   if fileExists(nimbyDest):
-  #     removeFile(nimbyDest)
-  #   echo &"Copying {nimbyPath} to {nimbyDest}"
-  #   copyFile(nimbyPath, nimbyDest)
-
   # Tell the user a single PATH change they can run now.
   let binPath = nimbyDir / "nim" / "bin"
   echo "Add Nim to your PATH for this session with one of:"
