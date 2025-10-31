@@ -16,6 +16,8 @@ jobs:
 
       - name: Download Nimby
         run: curl -L -o nimby https://github.com/treeform/nimby/releases/download/v0.1.2/nimby-Linux-X64
+
+      - name: Set executable permissions for Nimby
         run: chmod +x nimby
 
       - name: Use Nim 2.2.6
