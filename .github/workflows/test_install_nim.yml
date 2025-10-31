@@ -30,11 +30,17 @@ jobs:
       - name: Print Nimby nim/bin folder
         run: ls "$HOME/.nimby/nim/bin"
 
+      - name: Set Nim to be executable
+        run: chmod +x "$HOME/.nimby/nim/bin/nim"
+
       - name: Add Nim to PATH
         run: echo "$HOME/.nimby/nim/bin" >> "$GITHUB_PATH"
 
       - name: Print PATH
         run: echo "$PATH"
 
-      - name: Print Nim version
+      - name: Print Nim version (Full Path)
         run: $HOME/.nimby/nim/bin/nim --version
+
+      - name: Print Nim version (Normal)
+        run: nim --version
