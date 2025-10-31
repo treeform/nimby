@@ -569,7 +569,7 @@ proc installNim(nimVersion: string) =
       echo &"Downloading: {url}"
       cmd(&"curl -sSL {url} -o nim.tar.xz")
       echo "Extracting the Nim compiler"
-      cmd("tar xf nim.tar.xz --strip-components=1")
+      cmd("tar xf nim.tar.xz")
 
     else:
       quit "unsupported platform for Nim installation"
