@@ -44,3 +44,6 @@ jobs:
 
       - name: Print Nim version (Normal)
         run: nim --version
+
+      - name: Print Which Nim
+        run: which nim
