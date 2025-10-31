@@ -37,7 +37,4 @@ jobs:
         run: echo "$PATH"
 
       - name: Print Nim version
-        run: nim --version
-
-      - name: Print Which Nim
-        run: which nim
+        run: $HOME/.nimby/nim/bin/nim --version
