@@ -18,11 +18,14 @@ jobs:
       - name: Compile Nimby
         run: nim c --mm:atomicArc -d:release src/nimby.nim
 
-      - name: Test Speed
+      - name: Install Nim Compiler
         run: src/nimby use -V 2.2.6
 
       - name: Print Nimby Folder
         run: ls "$HOME/.nimby"
+
+      - name: Print Nimby nim/bin folder
+        run: ls "$HOME/.nimby/nim"
 
       - name: Print Nimby nim/bin folder
         run: ls "$HOME/.nimby/nim/bin"
