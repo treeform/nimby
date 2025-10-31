@@ -22,9 +22,7 @@ jobs:
         run: src/nimby use -V 2.2.6
 
       - name: Add Nim to PATH
-        run: |
-          export PATH="/home/runner/.nimby/nim/bin:$PATH"
-          echo "PATH=$PATH" >> $env:GITHUB_ENV
+        run: echo "$HOME/.nimby/nim/bin" >> "$GITHUB_PATH"
 
       - name: Print Nim version
         run: nim --version
