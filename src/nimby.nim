@@ -586,7 +586,7 @@ proc installNim(nimVersion: string) =
 
   # COPY nimby (the current executable) to the Nim bin directory.
   let nimbyPath = getAppFilename()
-  let nimbyDest = nimbyDir / "bin" / "nimby"
+  let nimbyDest = nimbyDir / "nim" / "bin" / "nimby"
   if nimbyPath == nimbyDest:
     info &"Nimby is already in the Nim bin directory: {nimbyDest}"
   else:
