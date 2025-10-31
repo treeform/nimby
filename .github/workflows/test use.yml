@@ -1,0 +1,31 @@
+
+name: Nimby Use Test
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download Nimby
+        run: curl -L -o nimby https://github.com/treeform/nimby/releases/download/v0.1.2/nimby-Linux-X64
+        run: chmod +x nimby
+
+      - name: Use Nim 2.2.6
+        run: ./nimby use 2.2.6
+
+      - name: Install Fidget2
+        run: ./nimby install fidget2
+
+      - name: List Installed Nim packages
+        run: ./nimby list
+
+      - name: List Dependencies in Tree View
+        run: ./nimby tree fidget2

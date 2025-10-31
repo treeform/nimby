@@ -580,22 +580,39 @@ proc installNim(nimVersion: string) =
     setCurrentDir(previousDir)
     echo &"Installed Nim {nimVersion} to: {installDir}"
 
-  # Tell the user a single PATH change they can run now.
-  let binPath = installDir / "bin"
-  echo "Add Nim to your PATH for this session with one of:"
-  echo &"  export PATH=\"{binPath}:$PATH\"    # bash/zsh"
-  echo &"  fish_add_path {binPath}              # fish"
-  when defined(windows):
-    let winBin = (installDir.replace("/", "\\") & "\\bin")
-    echo &"  $env:PATH = \"{winBin};$env:PATH\"   # PowerShell"
+  # copy installDir/nim-{nimVersion} to installDir/bin
+  let versionDir = nimbyDir / "nim-" & nimVersion
+  let versionNimDir = versionDir / "bin"
+  let versionLibDir = versionDir / "lib"
+  let binDir = nimbyDir / "bin"
+  let libDir = nimbyDir / "lib"
+  removeDir(binDir)
+  copyDir(versionNimDir, binDir)
+  info &"Copied {versionNimDir} to {binDir}"
+  removeDir(libDir)
+  copyDir(versionLibDir, libDir)
+  info &"Copied {versionLibDir} to {libDir}"
 
   # COPY nimby (the current executable) to the Nim bin directory.
   let nimbyPath = getAppFilename()
-  let nimbyDest = installDir / "bin" / "nimby"
-  if fileExists(nimbyDest):
-    removeFile(nimbyDest)
-  copyFile(nimbyPath, nimbyDest)
-  echo &"Copied {nimbyPath} to {nimbyDest}"
+  let nimbyDest = nimbyDir / "bin" / "nimby"
+  if nimbyPath == nimbyDest:
+    info &"Nimby is already in the Nim bin directory: {nimbyDest}"
+  else:
+    if fileExists(nimbyDest):
+      removeFile(nimbyDest)
+    copyFile(nimbyPath, nimbyDest)
+    info &"Copied {nimbyPath} to {nimbyDest}"
+
+  # Tell the user a single PATH change they can run now.
+  let binPath = nimbyDir / "bin"
+  echo "Add Nim to your PATH for this session with one of:"
+  when defined(windows):
+    let winBin = (nimbyDir.replace("/", "\\") & "\\bin")
+    echo &"$env:PATH = \"{winBin};$env:PATH\"   # PowerShell"
+  else:
+    echo &"export PATH=\"{binPath}:$PATH\"      # bash/zsh"
+    echo &"fish_add_path {binPath}              # fish"
 
 when isMainModule:
 
