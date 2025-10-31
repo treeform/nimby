@@ -23,6 +23,11 @@ jobs:
       - name: Use Nim 2.2.6
         run: ./nimby use 2.2.6
 
+      - name: Add Nim to PATH
+        run: |
+          export PATH="/home/runner/.nimby/nim-2.2.6/bin:$PATH"
+          echo "PATH=$PATH" >> $env:GITHUB_ENV
+
       - name: Install Fidget2
         run: ./nimby install fidget2
 
