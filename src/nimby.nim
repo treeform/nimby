@@ -86,7 +86,8 @@ proc timeStart() =
 proc timeEnd() =
   ## Stop the timer and print the time taken.
   let timeEnded = epochTime()
-  echo "Took: ", timeEnded - timeStarted, " seconds"
+  let dt = timeEnded - timeStarted
+  echo &"Took: {dt:.2f} seconds"
 
 proc writeVersion() =
   ## Write the version of Nimby.
@@ -317,6 +318,8 @@ proc fetchPackage(argument: string) =
         else:
           packageName
 
+    info &"Looking in directory: {packagePath}"
+
     if not dirExists(packagePath):
       # Clone the package from the url at given git hash.
       cmd(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
@@ -331,7 +334,7 @@ proc fetchPackage(argument: string) =
         cmd(&"git -C {packagePath} checkout {packageGitHash}")
         echo &"Updated package: {packageName}"
       else:
-        info &"Package {packageName} is correct hash."
+        info &"Package {packageName} has the correct hash."
     addConfigPackage(packageName)
 
   else:
@@ -524,6 +527,7 @@ proc installNim(nimVersion: string) =
   if not dirExists(nimbyDir):
     createDir(nimbyDir)
   let installDir = nimbyDir / ("nim-" & nimVersion)
+
   if dirExists(installDir):
     echo &"Nim {nimVersion} already installed at: {installDir}"
   else:
@@ -536,7 +540,6 @@ proc installNim(nimVersion: string) =
       let url = &"https://nim-lang.org/download/nim-{nimVersion}_x64.zip"
       echo &"Downloading: {url}"
       cmd(&"curl -sSL {url} -o nim.zip")
-      # Use PowerShell to extract to current directory for wider availability on Windows
       cmd("powershell -NoProfile -Command Expand-Archive -Force -Path nim.zip -DestinationPath .")
       let extractedDir = &"nim-{nimVersion}"
       if dirExists(extractedDir):
