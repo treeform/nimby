@@ -26,7 +26,7 @@ I tried replacing Nimble with a few simple shell scripts that just cloned the re
 
 So Nimby started from a simple idea: dowload Nim packages from git, do no resolve dependencies, and in parallel.
 
-## Why always install HEAD? 
+## Why always install HEAD?
 
 Well, the Nim community is small, and it doesn’t really have the packaging culture that other languages do. And that’s fine. In a way, it’s actually freeing!
 
@@ -50,11 +50,11 @@ It's a simple text file that lists package names, URLs, and commits.
 
 You always should run `nimby` commands from the workspace folder just like you would with `git clone`. It's not wrong to think of nimby like a `git clone` with extra steps.
 
-I think the workspace folder is great. The way I have things set up, there’s a single Nim config file, and all the packages I’m working on live together as simple git checkouts. 
+I think the workspace folder is great. The way I have things set up, there’s a single Nim config file, and all the packages I’m working on live together as simple git checkouts.
 Alongside them, I also keep clones of all the dependencies I use. Everything lives in one place:
 
 ```
-workspace/ 
+workspace/
   nim.cfg
   fidget2/
   pixie/
@@ -76,9 +76,9 @@ The global option works for both `nimby install -g` and even more importantly `n
 
 ## What? It also installs Nim itself?
 
-Yeah, installing Nim is actually pretty easy. You just copy a couple of folders, put them in the right place, and add `~/.nimby/nim/bin` to your system path. That’s it. 
+Yeah, installing Nim is actually pretty easy. You just copy a couple of folders, put them in the right place, and add `~/.nimby/nim/bin` to your system path. That’s it.
 
-I think it’s a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system `curl -L -o nimby https://github.com/treeform/nimby/releases/download/v0.1.2/nimby-Linux-X64`, and that’s all you need. Then you run `./nimby use 2.2.6` with the Nim version you want, and `./nimby install your/nimby.lock` with your lock file. 
+I think it’s a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system `curl -L -o nimby https://github.com/treeform/nimby/releases/download/v0.1.2/nimby-Linux-X64`, and that’s all you need. Then you run `./nimby use 2.2.6` with the Nim version you want, and `./nimby install your/nimby.lock` with your lock file.
 
 This works perfectly for CI workflows, deployments, or any situation where you’re starting with a blank machine. You don’t need to install anything else. Nimby downloads Nim, installs your packages, and you’re ready to go.
 
@@ -87,23 +87,20 @@ This works perfectly for CI workflows, deployments, or any situation where you�
 ## Installation
 
 ### macOS ARM64
-
-```sh
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/v0.1.2/nimby-macOS-ARM64
+```
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/v0.1.5/nimby-macOS-ARM64
 chmod +x nimby
 ```
 
 ### Linux X64
-
-```sh
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/v0.1.2/nimby-Linux-X64
+```
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/v0.1.5/nimby-Linux-X64
 chmod +x nimby
 ```
 
 ### Windows
-
-```sh
-curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/v0.1.2/nimby-Windows-X64.exe
+```
+curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/v0.1.5/nimby-Windows-X64.exe
 ```
 
 
