@@ -1,6 +1,6 @@
 
 
-# TO make nimby easy to install it only depends on system packages.
+# To make nimby easy to install it only depends on system packages.
 import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
   locks]
 
@@ -292,7 +292,7 @@ proc fetchPackage(argument: string) =
 
   if argument.endsWith(".nimble"):
 
-    # Packaged form a nimble file.
+    # Package from a nimble file.
     let nimblePath = argument
     if not fileExists(nimblePath):
       quit(&"Local nimble file not found: {nimblePath}")
@@ -463,7 +463,7 @@ proc checkPackage(packageName: string) =
 proc doctorPackage(argument: string) =
   ## Doctor the package.
   # Walk through all the packages:
-  # Make workspace root has a nim.cfg entry.
+  # Make sure workspace root has a nim.cfg entry.
   # Make sure they have all deps installed.
   if argument != "":
     if not dirExists(argument):
@@ -578,7 +578,7 @@ proc installNim(nimVersion: string) =
     setCurrentDir(previousDir)
     echo &"Installed Nim {nimVersion} to: {installDir}"
 
-  # copy installDir/nim-{nimVersion} to installDir/bin
+  # copy nim-{nimVersion} to global nim directory
   let versionNimDir = nimbyDir / "nim-" & nimVersion
   let globalNimDir = nimbyDir / "nim"
   removeDir(globalNimDir)
