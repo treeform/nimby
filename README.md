@@ -12,7 +12,7 @@
 Nimby is the fastest and simplest way to install Nim packages.
 It keeps things honest, transparent, and lightning fast.
 
-Instead of magic Nimby just uses git. It clones repositories directly into your workspace, reads their `.nimble` files, and installs dependencies in parallel. Everything is shallow cloned, HEAD by design, and written straight into your `nim.cfg`.
+Instead of magic, Nimby just uses git. It clones repositories directly into your workspace, reads their `.nimble` files, and installs dependencies in parallel. Everything is shallow cloned, HEAD by design, and written straight into your `nim.cfg`.
 
 You can also install globally with `-g` in `~/.nimby/pkgs` folder. Nimby can install the Nim compiler itself as well in the `~/.nimby/nim/bin` folder. With two commands you can download Nim and install all your packages, and be ready to build in seconds around 14 seconds.
 
@@ -22,9 +22,9 @@ You can also install globally with `-g` in `~/.nimby/pkgs` folder. Nimby can ins
 
 When I added Nim to our company CI, our builds suddenly became very slow. Nimble installs took almost two minutes for Fidget2. That felt wrong, so I started digging.
 
-I tried replacing Nimble with a few simple shell scripts that just cloned the repos with git. It built fine, and was way way faster! 2 minutes vs e seconds faster.
+I tried replacing Nimble with a few simple shell scripts that just cloned the repos with git. It built fine, and was way way faster! 2 minutes vs 3 seconds faster.
 
-So Nimby started from a simple idea: dowload Nim packages from git, do no resolve dependencies, and in parallel.
+So Nimby started from a simple idea: download Nim packages from git, do not resolve dependencies, and in parallel.
 
 ## Why always install HEAD?
 
@@ -34,9 +34,9 @@ But it also means that people rarely test older versions of packages against old
 
 This makes a lot of the version numbers in requirements you see in `.nimble` files don’t really reflect reality. They might claim that a version is supported, but in practice, no one tests the old stuff. And that’s okay. It’s just how the community works.
 
-So Nimby follows the community approach and always checks out HEAD, because HEAD has the highest chance of working. Even if an API has changed, we now have AI tools that can help update fix minor API changes.
+So Nimby follows the community approach and always checks out HEAD, because HEAD has the highest chance of working. Even if an API has changed, we now have AI tools that can help fix minor API changes.
 
-For development, installing from HEAD is the best way to move forward. It keeps everything current and in sync with how people actually develop Nim projects. It avoinds dimond dependencies and keeps things simple. I love simple things.
+For development, installing from HEAD is the best way to move forward. It keeps everything current and in sync with how people actually develop Nim projects. It avoids diamond dependencies (where your package depends on A and B, but A and B depend on conflicting versions of C) and keeps things simple. I love simple things.
 
 But installing from HEAD is not good for CI, releases, or deployment to production. That’s where lock files come in. Since the community relies on HEAD, lock files give you a way to record exactly what worked at a given moment in time.
 
