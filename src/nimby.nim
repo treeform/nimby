@@ -91,7 +91,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Write the version of Nimby.
-  echo "Nimby 0.1.0"
+  echo "Nimby 0.1.5"
 
 proc writeHelp() =
   ## Write the help message.
@@ -518,7 +518,6 @@ proc syncPackage(path: string) =
 
   timeEnd()
   quit(0)
-
 
 proc installNim(nimVersion: string) =
   ## Install a specific version of Nim.
