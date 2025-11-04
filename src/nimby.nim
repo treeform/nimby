@@ -1,6 +1,6 @@
 
 
-# To make nimby easy to install it only depends on system packages.
+# To make Nimby easy to install, it depends only on system packages.
 import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
   locks]
 
@@ -35,7 +35,7 @@ var
 initLock(jobLock)
 
 proc info(message: string) =
-  ## Print information message if verbose is true.
+  ## Print an informational message if verbose is true.
   if verbose:
     echo message
 
@@ -68,7 +68,7 @@ template withLock(lock: Lock, body: untyped) =
       release(lock)
 
 proc cutBetween(str, a, b: string): string =
-  ## Cut a string by two substrings.
+  ## Extract the substring between two markers.
   let
     cutA = str.find(a)
   if cutA == -1:
@@ -90,14 +90,14 @@ proc timeEnd() =
   echo &"Took: {dt:.2f} seconds"
 
 proc writeVersion() =
-  ## Write the version of Nimby.
+  ## Print the version of Nimby.
   echo "Nimby 0.1.5"
 
 proc writeHelp() =
-  ## Write the help message.
+  ## Show the help message.
   echo "Usage: nimby <subcommand> [options]"
   echo "  ~ Minimal package manager for Nim. ~"
-  echo "    -g, --global install the packages in the ~/.nimby/packages directory"
+  echo "    -g, --global Install packages in the ~/.nimby/pkgs directory"
   echo "    -v, --version print the version of Nimby"
   echo "    -h, --help show this help message"
   echo "    -V, --verbose print verbose output"
@@ -106,10 +106,10 @@ proc writeHelp() =
   echo "  update     update all Nim packages in the current directory"
   echo "  remove     remove all Nim packages in the current directory"
   echo "  list       list all Nim packages in the current directory"
-  echo "  tree       tree all packages as a dependency tree"
-  echo "  doctor     doctor all packages to fix any linking issues"
+  echo "  tree       show all packages as a dependency tree"
+  echo "  doctor     diagnose all packages and fix linking issues"
   echo "  lock       generate a lock file for a package"
-  echo "  sync       sync a lock file for a package"
+  echo "  sync       synchronize packages from a lock file"
   echo "  help       show this help message"
 
 proc getGlobalPackagesDir(): string =
@@ -117,7 +117,7 @@ proc getGlobalPackagesDir(): string =
   "~/.nimby/pkgs".expandTilde()
 
 proc parseNimbleFile*(fileName: string): NimbleFile =
-  ## Parse the nimble file and return a NimbleFile object.
+  ## Parse the .nimble file and return a NimbleFile object.
   let nimble = readFile(fileName)
   result = NimbleFile(installDir: fileName.parentDir())
   for line in nimble.splitLines():
@@ -155,7 +155,7 @@ proc parseNimbleFile*(fileName: string): NimbleFile =
   return result
 
 proc getNimbleFile(name: string): NimbleFile =
-  ## Get the nimble file for a package.
+  ## Get the .nimble file for a package.
   let
     localPath = &"{name}/{name}.nimble"
     globalPath = getGlobalPackagesDir() / name / name & ".nimble"
@@ -165,7 +165,7 @@ proc getNimbleFile(name: string): NimbleFile =
     return parseNimbleFile(globalPath)
 
 proc getGlobalPackages(): JsonNode =
-  ## Update the packages.json file.
+  ## Fetch and return the global packages index (packages.json).
   let globalPackagesDir = getGlobalPackagesDir() / "packages"
   if not updatedGlobalPackages:
     if not fileExists(globalPackagesDir / "packages.json"):
@@ -193,7 +193,7 @@ proc enqueuePackage(packageName: string) =
     inc jobQueueEnd
 
 proc popPackage(): string =
-  ## Pop a package from the job queue or return empty string.
+  ## Pop a package from the job queue or return an empty string.
   withLock(jobLock):
     if jobQueueEnd > jobQueueStart:
       result = jobQueue[jobQueueStart]
@@ -201,7 +201,7 @@ proc popPackage(): string =
       inc jobsInProgress
 
 proc readGitHash(packageName: string): string =
-  ## Read the git hash of a package.
+  ## Read the Git hash of a package.
   let globalPath = getGlobalPackagesDir() / packageName
   for path in [packageName, globalPath]:
     if dirExists(path):
@@ -211,7 +211,7 @@ proc readGitHash(packageName: string): string =
   return ""
 
 proc readPackageUrl(packageName: string): string =
-  ## Read the url of a package.
+  ## Read the URL of a package.
   let packages = getGlobalPackages()
   for p in packages:
     if p["name"].getStr() == packageName:
@@ -252,7 +252,7 @@ proc worker(id: int) {.thread.} =
 proc addConfigDir(path: string) =
   ## Add a directory to the nim.cfg file.
   withLock(jobLock):
-    let path = path.replace("\\", "/") # Always use linux style paths.
+    let path = path.replace("\\", "/") # Always use Linux-style paths.
     if not fileExists("nim.cfg"):
       writeFile("nim.cfg", "# Created by Nimby\n")
     var nimCfg = readFile("nim.cfg")
@@ -269,7 +269,7 @@ proc addConfigPackage(name: string) =
   addConfigDir(package.installDir / package.srcDir)
 
 proc removeConfigDir(path: string) =
-  ## Remove the package from the nim.cfg file.
+  ## Remove a directory from the nim.cfg file.
   withLock(jobLock):
     var nimCfg = readFile("nim.cfg")
     var lines = nimCfg.splitLines()
@@ -292,12 +292,12 @@ proc fetchPackage(argument: string) =
 
   if argument.endsWith(".nimble"):
 
-    # Package from a nimble file.
+    # Package from a Nimble file.
     let nimblePath = argument
     if not fileExists(nimblePath):
-      quit(&"Local nimble file not found: {nimblePath}")
+      quit(&"Local .nimble file not found: {nimblePath}")
     else:
-      info &"Using local nimble file: {nimblePath}"
+      info &"Using local .nimble file: {nimblePath}"
     let packageName = nimblePath.splitFile().name
     addConfigPackage(packageName)
     for dependency in getNimbleFile(packageName).dependencies:
@@ -321,13 +321,13 @@ proc fetchPackage(argument: string) =
     info &"Looking in directory: {packagePath}"
 
     if not dirExists(packagePath):
-      # Clone the package from the url at given git hash.
+      # Clone the package from the URL at the given Git hash.
       cmd(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
       cmd(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
       cmd(&"git -C {packagePath} checkout {packageGitHash}")
       echo &"Installed package: {packageName}"
     else:
-      # Check to see if the package is at the given git hash.
+      # Check whether the package is at the given Git hash.
       let gitHash = readGitHash(packageName)
       if gitHash != packageGitHash:
         cmd(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
@@ -364,7 +364,7 @@ proc fetchPackage(argument: string) =
       echo &"Installed package: {name}"
       fetchDeps(name)
     else:
-      quit &"Unknown method {methodKind} to fetch package {name}"
+      quit &"Unknown method {methodKind} for fetching package {name}"
 
 proc installPackage(argument: string) =
   ## Install a package.
@@ -379,8 +379,8 @@ proc installPackage(argument: string) =
   jobQueueEnd = 0
   jobsInProgress = 0
 
-  # Ensure packages index is available before workers start
-  # and enqueue the initial package
+  # Ensure the packages index is available before workers start.
+  # Enqueue the initial package.
   enqueuePackage(argument)
 
   var threads: array[WorkerCount, Thread[int]]
@@ -461,10 +461,10 @@ proc checkPackage(packageName: string) =
     echo &"Package `{packageName}` not found in nim.cfg."
 
 proc doctorPackage(argument: string) =
-  ## Doctor the package.
-  # Walk through all the packages:
-  # Make sure workspace root has a nim.cfg entry.
-  # Make sure they have all deps installed.
+  ## Diagnose packages and fix configuration issues.
+  # Walk through all packages.
+  # Ensure the workspace root has a nim.cfg entry.
+  # Ensure all dependencies are installed.
   if argument != "":
     if not dirExists(argument):
       quit(&"Package `{argument}` not found.")
@@ -496,7 +496,7 @@ proc lockPackage(argument: string) =
     break
 
 proc syncPackage(path: string) =
-  ## Sync the package.
+  ## Synchronize packages from a lock file.
   info &"Syncing lock file: {path}"
   timeStart()
 
@@ -565,7 +565,7 @@ proc installNim(nimVersion: string) =
       cmd("tar xf nim.tar.xz --strip-components=1")
 
     else:
-      quit "unsupported platform for Nim installation"
+      quit "Unsupported platform for Nim installation"
 
     setCurrentDir(previousDir)
     echo &"Installed Nim {nimVersion} to: {installDir}"
@@ -640,4 +640,4 @@ when isMainModule:
     of "doctor": doctorPackage(argument)
     of "help": writeHelp()
     else:
-      quit "invalid command"
+      quit "Invalid command"
