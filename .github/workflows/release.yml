@@ -5,7 +5,7 @@ on:
     types: [published]
   push:
     tags:
-      - "v*"
+      - "*"
   workflow_dispatch:
 
 permissions:
@@ -61,5 +61,3 @@ jobs:
           files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-

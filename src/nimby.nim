@@ -91,7 +91,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Print the version of Nimby.
-  echo "Nimby 0.1.5"
+  echo "Nimby 0.1.6"
 
 proc writeHelp() =
   ## Show the help message.
