@@ -91,7 +91,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Write the version of Nimby.
-  echo "Nimby 0.1.0"
+  echo "Nimby 0.1.5"
 
 proc writeHelp() =
   ## Write the help message.
@@ -519,7 +519,6 @@ proc syncPackage(path: string) =
   timeEnd()
   quit(0)
 
-
 proc installNim(nimVersion: string) =
   ## Install a specific version of Nim.
   info &"Installing Nim: {nimVersion}"
@@ -529,7 +528,7 @@ proc installNim(nimVersion: string) =
   let installDir = nimbyDir / ("nim-" & nimVersion)
 
   if dirExists(installDir):
-    echo &"Nim {nimVersion} already installed at: {installDir}"
+    info &"Nim {nimVersion} already downloaded at: {installDir}"
   else:
     createDir(installDir)
 
@@ -552,18 +551,11 @@ proc installNim(nimVersion: string) =
         removeDir(extractedDir)
 
     elif defined(macosx):
-      let url = &"https://nim-lang.org/download/nim-{nimVersion}.tar.xz"
+      let url = &"https://github.com/treeform/nimbuilds/raw/refs/heads/master/nim-{nimVersion}-macosx_arm64.tar.xz"
       echo &"Downloading: {url}"
       cmd(&"curl -sSL {url} -o nim.tar.xz")
+      echo "Extracting the Nim compiler"
       cmd("tar xf nim.tar.xz --strip-components=1")
-      echo "Building the Nim compiler"
-      cmd("./build.sh")
-      echo "Building the Koch tool"
-      cmd("./bin/nim c --noNimblePath --skipUserCfg --skipParentCfg --hints:off koch")
-      echo "Booting the Nim compiler"
-      cmd("./koch boot -d:release --skipUserCfg --skipParentCfg --hints:off")
-      echo "Building the Koch tools"
-      cmd("./koch tools --skipUserCfg --skipParentCfg --hints:off")
 
     elif defined(linux):
       let url = &"https://nim-lang.org/download/nim-{nimVersion}-linux_x64.tar.xz"
@@ -583,21 +575,24 @@ proc installNim(nimVersion: string) =
   let globalNimDir = nimbyDir / "nim"
   removeDir(globalNimDir)
   copyDir(versionNimDir, globalNimDir)
-  info &"Copied {versionNimDir} to {globalNimDir}"
+  echo &"Copied {versionNimDir} to {globalNimDir}"
 
   when not defined(windows):
     # Make sure the Nim binary is executable.
     cmd(&"chmod +x {globalNimDir}/bin/nim")
 
   # Tell the user a single PATH change they can run now.
+  let pathEnv = getEnv("PATH")
   let binPath = nimbyDir / "nim" / "bin"
-  echo "Add Nim to your PATH for this session with one of:"
-  when defined(windows):
-    let winBin = (binPath.replace("/", "\\"))
-    echo &"$env:PATH = \"{winBin};$env:PATH\"   # PowerShell"
-  else:
-    echo &"export PATH=\"{binPath}:$PATH\"      # bash/zsh"
-    echo &"fish_add_path {binPath}              # fish"
+  info &"Checking if Nim is in the PATH: {pathEnv}"
+  if not pathEnv.contains(binPath):
+    echo "Add Nim to your PATH for this session with one of:"
+    when defined(windows):
+      let winBin = (binPath.replace("/", "\\"))
+      echo &"$env:PATH = \"{winBin};$env:PATH\"   # PowerShell"
+    else:
+      echo &"export PATH=\"{binPath}:$PATH\"      # bash/zsh"
+      echo &"fish_add_path {binPath}              # fish"
 
 when isMainModule:
 
