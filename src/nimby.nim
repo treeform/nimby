@@ -227,7 +227,7 @@ proc fetchDeps(packageName: string) =
   ## Fetch the dependencies of a package.
   let package = getNimbleFile(packageName)
   if package == nil:
-    quit(&"Can't fetch deps for Nimble file not found: {packageName}")
+    quit(&"Can't fetch deps for: Nimble file not found: {packageName}")
   for dep in package.dependencies:
     info &"Dependency: {dep}"
     enqueuePackage(dep.name)
@@ -271,7 +271,7 @@ proc addConfigPackage(name: string) =
   ## Add a package to the nim.cfg file.
   let package = getNimbleFile(name)
   if package == nil:
-    quit(&"Nimble file not found: {name}")
+    quit(&"Can't add config package: Nimble file not found: {name}")
   addConfigDir(package.installDir / package.srcDir)
 
 proc removeConfigDir(path: string) =
@@ -290,14 +290,12 @@ proc removeConfigPackage(name: string) =
   ## Remove the package from the nim.cfg file.
   let package = getNimbleFile(name)
   if package == nil:
-    quit(&"Nimble file not found: {name}")
+    quit(&"Can't remove config package: Nimble file not found: {name}")
   removeConfigDir(package.installDir / package.srcDir)
 
 proc fetchPackage(argument: string) =
   ## Main recursive function to fetch a package and its dependencies.
-
   if argument.endsWith(".nimble"):
-
     # Package from a Nimble file.
     let nimblePath = argument
     if not fileExists(nimblePath):
@@ -408,7 +406,7 @@ proc removePackage(argument: string) =
   removeConfigPackage(argument)
   let package = getNimbleFile(argument)
   if package == nil:
-    quit(&"Nimble file not found: {argument}")
+    quit(&"Can't remove package: Nimble file not found: {argument}")
   let packagePath = package.installDir
   if not dirExists(packagePath):
     quit(&"Package not found: {packagePath}")
