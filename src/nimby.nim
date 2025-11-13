@@ -170,11 +170,17 @@ proc getGlobalPackages(): JsonNode =
   if not updatedGlobalPackages:
     if not fileExists(globalPackagesDir / "packages.json"):
       info "Packages.json not found, cloning..."
-      cmd(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
+      withLock(jobLock):
+        if not fileExists(globalPackagesDir / "packages.json") and not updatedGlobalPackages:
+          cmd(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
+        updatedGlobalPackages = true
     else:
       info "Packages.json found, pulling..."
-      cmd(&"git -C {globalPackagesDir} pull")
-    updatedGlobalPackages = true
+      withLock(jobLock):
+        if not updatedGlobalPackages:
+          cmd(&"git -C {globalPackagesDir} pull")
+        updatedGlobalPackages = true
+
   return readFile(globalPackagesDir & "/packages.json").parseJson()
 
 proc getGlobalPackage(packageName: string): JsonNode =
