@@ -455,7 +455,11 @@ proc treePackages(argument: string) =
 
 proc checkPackage(packageName: string) =
   ## Check a package.
-  for dependency in getNimbleFile(packageName).dependencies:
+  let nimbleFile = getNimbleFile(packageName)
+  if nimbleFile == nil:
+    echo &"Package `{packageName}` is not a Nim project (no .nimble file found)."
+    return
+  for dependency in nimbleFile.dependencies:
     if not dirExists(dependency.name):
       echo &"Dependency `{dependency.name}` not found for package `{packageName}`."
   if not fileExists(&"nim.cfg"):
