@@ -16,7 +16,7 @@ proc cmd(command: string) =
 # cmd("nimby --version")
 # cmd("nimby -v")
 
-removeDir(expandTilde("~/.nimby/packages"))
+removeDir(expandTilde("~/.nimby/pkgs"))
 removeDir(expandTilde("~/.nimby/tmp"))
 createDir(expandTilde("~/.nimby/tmp"))
 setCurrentDir(expandTilde("~/.nimby/tmp"))
@@ -25,11 +25,11 @@ cmd("nimby install -V mummy")
 doAssert dirExists("mummy")
 cmd("nimby remove mummy")
 
-removeDir(expandTilde("~/.nimby/packages"))
+removeDir(expandTilde("~/.nimby/pkgs"))
 removeDir(expandTilde("~/.nimby/tmp"))
 createDir(expandTilde("~/.nimby/tmp"))
 setCurrentDir(expandTilde("~/.nimby/tmp"))
 
 cmd("nimby install -g -V mummy")
 doAssert not dirExists("mummy")
-doAssert dirExists(expandTilde("~/.nimby/packages/mummy"))
+doAssert dirExists(expandTilde("~/.nimby/pkgs/mummy"))
