@@ -1,0 +1,27 @@
+name: Test
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: treeform/setup-nim-action@v2
+
+      - name: Build Nimby
+        run: nim c --mm:atomicArc -d:release src/nimby.nim
+
+      - name: Add Nimby to PATH
+        run: echo "$PWD/src" >> "$GITHUB_PATH"
+
+      - name: Run Nimble Tests
+        run: nimble test
+
+      - name: Check Nim Code
+        run: nim check src/nimby.nim

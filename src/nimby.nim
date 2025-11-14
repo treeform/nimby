@@ -130,7 +130,7 @@ proc parseNimbleFile*(fileName: string): NimbleFile =
       var name, op, version = ""
       while i < line.len and line[i] in [' ', '"']:
         inc i
-      while i < line.len and line[i] notin ['=', '<', '>', '~', '^', ' ']:
+      while i < line.len and line[i] notin ['=', '<', '>', '~', '^', ' ', '"']:
         name.add(line[i])
         inc i
       while i < line.len and line[i] in [' ']:
