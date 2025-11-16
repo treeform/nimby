@@ -4,21 +4,15 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
-inputs:
-  nim-version:
-    description: >-
-      The Nim version to download and use. Example: 2.2.6
-    default: '2.2.6'
-  nimby-version:
-    description: >-
-      The Nimby version to download and use. Example: 0.1.7
-    default: '0.1.7'
 jobs:
   build:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      NIM_VERSION: '2.2.6'
+      NIMBY_VERSION: '0.1.7'
     steps:
 
       - name: Setup Nim via Nimby (Windows)
@@ -27,10 +21,10 @@ jobs:
         run: |
           set -e
           echo "Downloading Nimby for Windows..."
-          curl -sSL -o nimby.exe "https://github.com/treeform/nimby/releases/download/${{ inputs.nimby-version }}/nimby-Windows-X64.exe"
+          curl -sSL -o nimby.exe "https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-Windows-X64.exe"
           chmod +x nimby.exe
-          echo "Using Nimby to install Nim ${{ inputs.nim-version }}..."
-          ./nimby.exe use "${{ inputs.nim-version }}"
+          echo "Using Nimby to install Nim $NIM_VERSION..."
+          ./nimby.exe use "$NIM_VERSION"
           cp nimby.exe $HOME/.nimby/nim/bin/nimby.exe
           echo "Adding Nim bin to PATH..."
           echo "$(cygpath -w "$HOME")\.nimby\nim\bin" >> "$GITHUB_PATH"
@@ -42,15 +36,15 @@ jobs:
           set -e
           arch="$(uname -m)"
           if [ "$arch" = "arm64" ]; then
-            NIMBY_URL="https://github.com/treeform/nimby/releases/download/${{ inputs.nimby-version }}/nimby-macOS-ARM64"
+            NIMBY_URL="https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-macOS-ARM64"
           else
-            NIMBY_URL="https://github.com/treeform/nimby/releases/download/${{ inputs.nimby-version }}/nimby-macOS-X64"
+            NIMBY_URL="https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-macOS-X64"
           fi
           echo "Downloading Nimby for macOS ($arch)..."
           curl -sSL -o nimby "$NIMBY_URL"
           chmod +x nimby
-          echo "Using Nimby to install Nim ${{ inputs.nim-version }}..."
-          ./nimby use "${{ inputs.nim-version }}"
+          echo "Using Nimby to install Nim $NIM_VERSION..."
+          ./nimby use "$NIM_VERSION"
           cp nimby $HOME/.nimby/nim/bin/nimby
           chmod +x $HOME/.nimby/nim/bin/nimby
           echo "Adding Nim bin to PATH..."
@@ -62,10 +56,10 @@ jobs:
         run: |
           set -e
           echo "Downloading Nimby for Linux..."
-          curl -sSL -o nimby "https://github.com/treeform/nimby/releases/download/${{ inputs.nimby-version }}/nimby-Linux-X64"
+          curl -sSL -o nimby "https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-Linux-X64"
           chmod +x nimby
-          echo "Using Nimby to install Nim ${{ inputs.nim-version }}..."
-          ./nimby use "${{ inputs.nim-version }}"
+          echo "Using Nimby to install Nim $NIM_VERSION..."
+          ./nimby use "$NIM_VERSION"
           cp nimby $HOME/.nimby/nim/bin/nimby
           chmod +x $HOME/.nimby/nim/bin/nimby
           echo "Adding Nim bin to PATH..."
