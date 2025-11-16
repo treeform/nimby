@@ -15,13 +15,10 @@ jobs:
       - uses: treeform/setup-nim-action@v2
 
       - name: Build Nimby
-        run: nim c --mm:atomicArc -d:release src/nimby.nim
+        run: nim c -d:release src/nimby.nim
 
       - name: Add Nimby to PATH
         run: echo "$PWD/src" >> "$GITHUB_PATH"
 
-      - name: Run Nimble Tests
-        run: nimble test
-
-      - name: Check Nim Code
-        run: nim check src/nimby.nim
+      - name: Run Nimby Tests
+        run: nim r tests/test_parsing.nim
