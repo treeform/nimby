@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          nim c --mm:atomicArc -d:release -o:dist/${{ steps.meta.outputs.artifact }} src/nimby.nim
+          nim c -d:release -o:dist/${{ steps.meta.outputs.artifact }} src/nimby.nim
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

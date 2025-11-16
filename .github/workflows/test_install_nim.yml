@@ -16,7 +16,7 @@ jobs:
       - uses: treeform/setup-nim-action@v2
 
       - name: Compile Nimby
-        run: nim c --mm:atomicArc -d:release src/nimby.nim
+        run: nim c -d:release src/nimby.nim
 
       - name: Install Nim Compiler
         run: src/nimby use -V 2.2.6
