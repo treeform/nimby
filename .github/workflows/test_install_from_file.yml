@@ -1,0 +1,35 @@
+name: Test Install From a .nimble File
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: treeform/setup-nim-action@v2
+
+      - name: Compile Nimby
+        run: nim c -d:release src/nimby.nim
+
+      - name: Boxy
+        run: git clone --depth 1 https://github.com/Metta-AI/metta.git
+
+      - name: Sync Metta Lock File
+        run: src/nimby install boxy/boxy.nimble
+
+      - name: List Installed Packages
+        run: src/nimby list
+
+      - name: List Dependency Tree
+        run: src/nimby tree mettagrid/nim/mettascope
+
+      - name: Build Boxy
+        run: nim c -d:release boxy/src/boxy.nim
+
+  
