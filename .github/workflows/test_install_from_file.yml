@@ -18,7 +18,7 @@ jobs:
         run: nim c -d:release src/nimby.nim
 
       - name: Boxy
-        run: git clone --depth 1 https://github.com/Metta-AI/metta.git
+        run: git clone --depth 1 https://github.com/treeform/boxy.git
 
       - name: Sync Metta Lock File
         run: src/nimby install boxy/boxy.nimble
