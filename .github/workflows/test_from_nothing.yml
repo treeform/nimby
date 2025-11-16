@@ -39,6 +39,7 @@ jobs:
 
       - name: Add Nim to PATH
         run: echo "$HOME/.nimby/nim/bin" >> "$GITHUB_PATH"
+        shell: bash
 
       - name: Copy Nimby to Nim bin directory (Linux or macOS)
         if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
