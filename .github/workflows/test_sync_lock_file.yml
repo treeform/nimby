@@ -1,0 +1,35 @@
+name: Test Sync Lock File
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: treeform/setup-nim-action@v2
+
+      - name: Compile Nimby
+        run: nim c -d:release src/nimby.nim
+
+      - name: Clone Metta (with MettaScope)
+        run: git clone --depth 1 https://github.com/Metta-AI/metta.git
+
+      - name: Sync Metta Lock File
+        run: src/nimby sync metta/packages/mettagrid/nim/mettascope/nimby.lock
+
+      - name: List Installed Packages
+        run: src/nimby list
+
+      - name: List Dependency Tree
+        run: src/nimby tree mettagrid/nim/mettascope
+
+      - name: Build MettaScope
+        run: nim c -d:release metta/packages/mettagrid/nim/mettascope/src/mettascope.nim
+
+  
