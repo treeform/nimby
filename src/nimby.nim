@@ -163,13 +163,15 @@ proc parseNimbleFile*(fileName: string): NimbleFile =
 
 proc getNimbleFile(name: string): NimbleFile =
   ## Get the .nimble file for a package.
-  let
-    localPath = &"{name}/{name}.nimble"
-    globalPath = getGlobalPackagesDir() / name / name & ".nimble"
-  if fileExists(localPath):
-    return parseNimbleFile(localPath)
-  if fileExists(globalPath):
-    return parseNimbleFile(globalPath)
+  for trying in 1 .. 3: # Some times the files are not immediately available.
+    let
+      localPath = name / name & ".nimble"
+      globalPath = getGlobalPackagesDir() / name / name & ".nimble"
+    if fileExists(localPath):
+      return parseNimbleFile(localPath)
+    if fileExists(globalPath):
+      return parseNimbleFile(globalPath)
+    sleep(100)
 
 proc getGlobalPackages(): JsonNode =
   ## Fetch and return the global packages index (packages.json).
