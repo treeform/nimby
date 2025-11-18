@@ -45,6 +45,10 @@ jobs:
       - name: Print Which Nim
         run: which nim
 
+      - name: List the Nim folder
+        shell: bash
+        run: ls -la "$HOME/.nimby/nim"
+
       - name: Compile & Run Hello World
         run: nim c -r tools/helloworld.nim
 
