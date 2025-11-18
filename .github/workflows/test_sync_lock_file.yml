@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - uses: treeform/setup-nim-action@v2
+      - uses: treeform/setup-nim-action@v3
 
       - name: Compile Nimby
         run: nim c -d:release src/nimby.nim
