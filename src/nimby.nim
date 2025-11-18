@@ -46,6 +46,13 @@ proc readFileSafe(fileName: string): string {.raises: [].} =
   except:
     quit("error reading file `" & fileName & "`: " & getCurrentExceptionMsg())
 
+proc writeFileSafe(fileName: string, content: string) {.raises: [].} =
+  ## Write the file and return the content.
+  try:
+    writeFile(fileName, content)
+  except:
+    quit("error writing file `" & fileName & "`: " & getCurrentExceptionMsg())
+
 proc runSafe(command: string) {.raises: [].} =
   ## Run the command and print the output if it fails.
   let exeName = command.split(" ")[0]
@@ -254,12 +261,12 @@ proc addConfigDir(path: string) =
   withLock(jobLock):
     let path = path.replace("\\", "/") # Always use Linux-style paths.
     if not fileExists("nim.cfg"):
-      writeFile("nim.cfg", "# Created by Nimby\n")
+      writeFileSafe("nim.cfg", "# Created by Nimby\n")
     var nimCfg = readFileSafe("nim.cfg")
     if nimCfg.contains(&"--path:\"{path}\""):
       return
     nimCfg.add(&"--path:\"{path}\"\n")
-    writeFile("nim.cfg", nimCfg)
+    writeFileSafe("nim.cfg", nimCfg)
 
 proc addConfigPackage(name: string) =
   ## Add a package to the nim.cfg file.
@@ -278,7 +285,7 @@ proc removeConfigDir(path: string) =
         lines.delete(i)
         break
     nimCfg = lines.join("\n")
-    writeFile("nim.cfg", lines.join("\n"))
+    writeFileSafe("nim.cfg", lines.join("\n"))
 
 proc removeConfigPackage(name: string) =
   ## Remove the package from the nim.cfg file.
