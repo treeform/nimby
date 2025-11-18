@@ -19,7 +19,7 @@ jobs:
         run: nim c -d:release src/nimby.nim
 
       - name: Install Nim Compiler
-        run: src/nimby use --source --verbose 2.2.6
+        run: src/nimby use --source --verbose 2.2.4
 
       - name: Print Nimby Folder
         run: ls "$HOME/.nimby"
