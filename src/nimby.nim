@@ -398,10 +398,22 @@ proc installPackage(argument: string) =
 
 proc updatePackage(argument: string) =
   ## Update a package.
+  if argument == "":
+    quit("No package specified for update")
   info &"Updating package: {argument}"
+  let package = getNimbleFile(argument)
+  if package == nil:
+    quit(&"Can't update package: Nimble file not found: {argument}")
+  let packagePath = package.installDir
+  if not dirExists(packagePath):
+    quit(&"Package not found: {packagePath}")
+  runSafe(&"git -C {packagePath} pull")
+  echo &"Updated package: {argument}"
 
 proc removePackage(argument: string) =
   ## Remove a package.
+  if argument == "":
+    quit("No package specified for removal")
   info &"Removing package: {argument}"
   removeConfigPackage(argument)
   let package = getNimbleFile(argument)
