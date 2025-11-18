@@ -23,6 +23,7 @@ type
 var
   verbose: bool = false
   global: bool = false
+  source: bool = false
   updatedGlobalPackages: bool = false
   timeStarted: float64
 
@@ -58,9 +59,14 @@ proc runSafe(command: string) {.raises: [].} =
   let exeName = command.split(" ")[0]
   let args = command.split(" ")[1..^1]
   try:
-    let p = startProcess(exeName, args=args, options={poUsePath})
+    var options = {poUsePath}
+    if verbose:
+      # Print the command output to the console.
+      options.incl(poStdErrToStdOut)
+      options.incl(poParentStreams)
     if verbose:
       echo "> ", command
+    let p = startProcess(exeName, args=args, options=options)
     if p.waitForExit(-1) != 0:
       if not verbose:
         echo "> ", command
@@ -555,37 +561,59 @@ proc installNim(nimVersion: string) =
     let previousDir = getCurrentDir()
     setCurrentDir(installDir)
 
-    when defined(windows):
-      let url = &"https://nim-lang.org/download/nim-{nimVersion}_x64.zip"
-      echo &"Downloading: {url}"
-      runSafe(&"curl -sSL {url} -o nim.zip")
-      runSafe("powershell -NoProfile -Command Expand-Archive -Force -Path nim.zip -DestinationPath .")
-      let extractedDir = &"nim-{nimVersion}"
-      if dirExists(extractedDir):
-        for kind, path in walkDir(extractedDir):
-          let name = path.extractFilename()
+    if source:
+      runSafe(&"git clone https://github.com/nim-lang/Nim.git --branch v{nimVersion} --depth 1 {installDir}")
+      setCurrentDir(installDir)
+      when defined(windows):
+        runSafe("build_all.bat")
+      else:
+        runSafe("build_all.sh")
+      let keepDirsAndFiles = @[
+          "bin",
+          "compiler",
+          "config",
+          "lib",
+          "copying.txt"
+      ]
+      for kind, path in walkDir(installDir):
+        if path.extractFilename() notin keepDirsAndFiles:
+          info &"Cleaning up: {path}"
           if kind == pcDir:
-            moveDir(extractedDir / name, installDir / name)
+            removeDir(path)
           else:
-            moveFile(extractedDir / name, installDir / name)
-        removeDir(extractedDir)
-
-    elif defined(macosx):
-      let url = &"https://github.com/treeform/nimbuilds/raw/refs/heads/master/nim-{nimVersion}-macosx_arm64.tar.xz"
-      echo &"Downloading: {url}"
-      runSafe(&"curl -sSL {url} -o nim.tar.xz")
-      echo "Extracting the Nim compiler"
-      runSafe("tar xf nim.tar.xz --strip-components=1")
-
-    elif defined(linux):
-      let url = &"https://nim-lang.org/download/nim-{nimVersion}-linux_x64.tar.xz"
-      echo &"Downloading: {url}"
-      runSafe(&"curl -sSL {url} -o nim.tar.xz")
-      echo "Extracting the Nim compiler"
-      runSafe("tar xf nim.tar.xz --strip-components=1")
-
+            removeFile(path)
     else:
-      quit "Unsupported platform for Nim installation"
+      when defined(windows):
+        let url = &"https://nim-lang.org/download/nim-{nimVersion}_x64.zip"
+        echo &"Downloading: {url}"
+        runSafe(&"curl -sSL {url} -o nim.zip")
+        runSafe("powershell -NoProfile -Command Expand-Archive -Force -Path nim.zip -DestinationPath .")
+        let extractedDir = &"nim-{nimVersion}"
+        if dirExists(extractedDir):
+          for kind, path in walkDir(extractedDir):
+            let name = path.extractFilename()
+            if kind == pcDir:
+              moveDir(extractedDir / name, installDir / name)
+            else:
+              moveFile(extractedDir / name, installDir / name)
+          removeDir(extractedDir)
+
+      elif defined(macosx):
+        let url = &"https://github.com/treeform/nimbuilds/raw/refs/heads/master/nim-{nimVersion}-macosx_arm64.tar.xz"
+        echo &"Downloading: {url}"
+        runSafe(&"curl -sSL {url} -o nim.tar.xz")
+        echo "Extracting the Nim compiler"
+        runSafe("tar xf nim.tar.xz --strip-components=1")
+
+      elif defined(linux):
+        let url = &"https://nim-lang.org/download/nim-{nimVersion}-linux_x64.tar.xz"
+        echo &"Downloading: {url}"
+        runSafe(&"curl -sSL {url} -o nim.tar.xz")
+        echo "Extracting the Nim compiler"
+        runSafe("tar xf nim.tar.xz --strip-components=1")
+
+      else:
+        quit "Unsupported platform for Nim installation"
 
     setCurrentDir(previousDir)
     echo &"Installed Nim {nimVersion} to: {installDir}"
@@ -641,6 +669,8 @@ when isMainModule:
         if not dirExists(getGlobalPackagesDir()):
           info &"Creating global packages directory: {getGlobalPackagesDir()}"
           createDir(getGlobalPackagesDir())
+      of "source", "s":
+        source = true
       else:
         echo "Unknown option: " & key
         quit(1)

@@ -1,0 +1,46 @@
+
+name: Test install Nim form Source
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: treeform/setup-nim-action@v3
+
+      - name: Compile Nimby
+        run: nim c -d:release src/nimby.nim
+
+      - name: Install Nim Compiler
+        run: src/nimby use --source --verbose 2.2.6
+
+      - name: Print Nimby Folder
+        run: ls "$HOME/.nimby"
+
+      - name: Print Nimby nim folder
+        run: ls "$HOME/.nimby/nim"
+
+      - name: Print Nimby nim/bin folder
+        run: ls "$HOME/.nimby/nim/bin"
+
+      - name: Add Nim to PATH
+        run: echo "$HOME/.nimby/nim/bin" >> "$GITHUB_PATH"
+
+      - name: Print PATH
+        run: echo "$PATH"
+
+      - name: Print Nim version (Full Path)
+        run: $HOME/.nimby/nim/bin/nim --version
+
+      - name: Print Nim version (Normal)
+        run: nim --version
+
+      - name: Print Which Nim
+        run: which nim
