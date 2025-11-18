@@ -567,7 +567,7 @@ proc installNim(nimVersion: string) =
       when defined(windows):
         runSafe("build_all.bat")
       else:
-        runSafe("build_all.sh")
+        runSafe("./build_all.sh")
       let keepDirsAndFiles = @[
           "bin",
           "compiler",
