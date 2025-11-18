@@ -39,7 +39,21 @@ proc info(message: string) =
   if verbose:
     echo message
 
-proc cmd(command: string) =
+proc readFileSafe(fileName: string): string {.raises: [].} =
+  ## Read the file and return the content.
+  try:
+    return readFile(fileName)
+  except:
+    quit("error reading file `" & fileName & "`: " & getCurrentExceptionMsg())
+
+proc writeFileSafe(fileName: string, content: string) {.raises: [].} =
+  ## Write the file and return the content.
+  try:
+    writeFile(fileName, content)
+  except:
+    quit("error writing file `" & fileName & "`: " & getCurrentExceptionMsg())
+
+proc runSafe(command: string) {.raises: [].} =
   ## Run the command and print the output if it fails.
   let exeName = command.split(" ")[0]
   let args = command.split(" ")[1..^1]
@@ -54,9 +68,8 @@ proc cmd(command: string) =
       echo p.peekableErrorStream().readAll()
       quit("error code: " & $p.peekExitCode())
     p.close()
-  except OSError:
-    echo "> ", command
-    quit("error: " & $getCurrentExceptionMsg())
+  except:
+    quit("error running command `" & command & "`: " & $getCurrentExceptionMsg())
 
 template withLock(lock: Lock, body: untyped) =
   ## Acquire the lock and execute the body.
@@ -66,18 +79,6 @@ template withLock(lock: Lock, body: untyped) =
       body
     finally:
       release(lock)
-
-proc cutBetween(str, a, b: string): string =
-  ## Extract the substring between two markers.
-  let
-    cutA = str.find(a)
-  if cutA == -1:
-    return ""
-  let
-    cutB = str.find(b, cutA)
-  if cutB == -1:
-    return ""
-  return str[cutA + a.len..<cutB]
 
 proc timeStart() =
   ## Start the timer.
@@ -118,7 +119,7 @@ proc getGlobalPackagesDir(): string =
 
 proc parseNimbleFile*(fileName: string): NimbleFile =
   ## Parse the .nimble file and return a NimbleFile object.
-  let nimble = readFile(fileName)
+  let nimble = readFileSafe(fileName)
   result = NimbleFile(installDir: fileName.parentDir())
   for line in nimble.splitLines():
     if line.startsWith("version"):
@@ -172,16 +173,16 @@ proc getGlobalPackages(): JsonNode =
       info "Packages.json not found, cloning..."
       withLock(jobLock):
         if not fileExists(globalPackagesDir / "packages.json") and not updatedGlobalPackages:
-          cmd(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
+          runSafe(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
         updatedGlobalPackages = true
     else:
       info "Packages.json found, pulling..."
       withLock(jobLock):
         if not updatedGlobalPackages:
-          cmd(&"git -C {globalPackagesDir} pull")
+          runSafe(&"git -C {globalPackagesDir} pull")
         updatedGlobalPackages = true
 
-  return readFile(globalPackagesDir & "/packages.json").parseJson()
+  return readFileSafe(globalPackagesDir & "/packages.json").parseJson()
 
 proc getGlobalPackage(packageName: string): JsonNode =
   ## Get a global package from the global packages.json file.
@@ -260,12 +261,12 @@ proc addConfigDir(path: string) =
   withLock(jobLock):
     let path = path.replace("\\", "/") # Always use Linux-style paths.
     if not fileExists("nim.cfg"):
-      writeFile("nim.cfg", "# Created by Nimby\n")
-    var nimCfg = readFile("nim.cfg")
+      writeFileSafe("nim.cfg", "# Created by Nimby\n")
+    var nimCfg = readFileSafe("nim.cfg")
     if nimCfg.contains(&"--path:\"{path}\""):
       return
     nimCfg.add(&"--path:\"{path}\"\n")
-    writeFile("nim.cfg", nimCfg)
+    writeFileSafe("nim.cfg", nimCfg)
 
 proc addConfigPackage(name: string) =
   ## Add a package to the nim.cfg file.
@@ -277,14 +278,14 @@ proc addConfigPackage(name: string) =
 proc removeConfigDir(path: string) =
   ## Remove a directory from the nim.cfg file.
   withLock(jobLock):
-    var nimCfg = readFile("nim.cfg")
+    var nimCfg = readFileSafe("nim.cfg")
     var lines = nimCfg.splitLines()
     for i, line in lines:
       if line.contains(&"--path:\"{path}\""):
         lines.delete(i)
         break
     nimCfg = lines.join("\n")
-    writeFile("nim.cfg", lines.join("\n"))
+    writeFileSafe("nim.cfg", lines.join("\n"))
 
 proc removeConfigPackage(name: string) =
   ## Remove the package from the nim.cfg file.
@@ -313,7 +314,6 @@ proc fetchPackage(argument: string) =
     let
       parts = argument.split(" ")
       packageName = parts[0]
-      packageVersion = parts[1]
       packageUrl = parts[2]
       packageGitHash = parts[3]
       packagePath =
@@ -326,16 +326,16 @@ proc fetchPackage(argument: string) =
 
     if not dirExists(packagePath):
       # Clone the package from the URL at the given Git hash.
-      cmd(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
-      cmd(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
-      cmd(&"git -C {packagePath} checkout {packageGitHash}")
+      runSafe(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
+      runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+      runSafe(&"git -C {packagePath} checkout {packageGitHash}")
       echo &"Installed package: {packageName}"
     else:
       # Check whether the package is at the given Git hash.
       let gitHash = readGitHash(packageName)
       if gitHash != packageGitHash:
-        cmd(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
-        cmd(&"git -C {packagePath} checkout {packageGitHash}")
+        runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+        runSafe(&"git -C {packagePath} checkout {packageGitHash}")
         echo &"Updated package: {packageName}"
       else:
         info &"Package {packageName} has the correct hash."
@@ -363,7 +363,7 @@ proc fetchPackage(argument: string) =
       if dirExists(path):
         info &"Package already exists: {path}"
       else:
-        cmd(&"git clone --depth 1 {url} {path}")
+        runSafe(&"git clone --depth 1 {url} {path}")
       addConfigPackage(name)
       echo &"Installed package: {name}"
       fetchDeps(name)
@@ -388,9 +388,9 @@ proc installPackage(argument: string) =
   enqueuePackage(argument)
 
   var threads: array[WorkerCount, Thread[int]]
-  for i in 0..<WorkerCount:
+  for i in 0 ..< WorkerCount:
     createThread(threads[i], worker, i)
-  for i in 0..<WorkerCount:
+  for i in 0 ..< WorkerCount:
     joinThread(threads[i])
 
   timeEnd()
@@ -464,7 +464,7 @@ proc checkPackage(packageName: string) =
       echo &"Dependency `{dependency.name}` not found for package `{packageName}`."
   if not fileExists(&"nim.cfg"):
     quit(&"Package `nim.cfg` not found.")
-  let nimCfg = readFile("nim.cfg")
+  let nimCfg = readFileSafe("nim.cfg")
   if not nimCfg.contains(&"--path:\"{packageName}/") and not nimCfg.contains(&"--path:\"{packageName}\""):
     echo &"Package `{packageName}` not found in nim.cfg."
 
@@ -511,7 +511,7 @@ proc syncPackage(path: string) =
   if not fileExists(path):
     quit(&"Package lock file `{path}` not found.")
 
-  for line in readFile(path).splitLines():
+  for line in readFileSafe(path).splitLines():
     let parts = line.split(" ")
     if parts.len != 4:
       continue
@@ -546,8 +546,8 @@ proc installNim(nimVersion: string) =
     when defined(windows):
       let url = &"https://nim-lang.org/download/nim-{nimVersion}_x64.zip"
       echo &"Downloading: {url}"
-      cmd(&"curl -sSL {url} -o nim.zip")
-      cmd("powershell -NoProfile -Command Expand-Archive -Force -Path nim.zip -DestinationPath .")
+      runSafe(&"curl -sSL {url} -o nim.zip")
+      runSafe("powershell -NoProfile -Command Expand-Archive -Force -Path nim.zip -DestinationPath .")
       let extractedDir = &"nim-{nimVersion}"
       if dirExists(extractedDir):
         for kind, path in walkDir(extractedDir):
@@ -561,16 +561,16 @@ proc installNim(nimVersion: string) =
     elif defined(macosx):
       let url = &"https://github.com/treeform/nimbuilds/raw/refs/heads/master/nim-{nimVersion}-macosx_arm64.tar.xz"
       echo &"Downloading: {url}"
-      cmd(&"curl -sSL {url} -o nim.tar.xz")
+      runSafe(&"curl -sSL {url} -o nim.tar.xz")
       echo "Extracting the Nim compiler"
-      cmd("tar xf nim.tar.xz --strip-components=1")
+      runSafe("tar xf nim.tar.xz --strip-components=1")
 
     elif defined(linux):
       let url = &"https://nim-lang.org/download/nim-{nimVersion}-linux_x64.tar.xz"
       echo &"Downloading: {url}"
-      cmd(&"curl -sSL {url} -o nim.tar.xz")
+      runSafe(&"curl -sSL {url} -o nim.tar.xz")
       echo "Extracting the Nim compiler"
-      cmd("tar xf nim.tar.xz --strip-components=1")
+      runSafe("tar xf nim.tar.xz --strip-components=1")
 
     else:
       quit "Unsupported platform for Nim installation"
@@ -587,7 +587,7 @@ proc installNim(nimVersion: string) =
 
   when not defined(windows):
     # Make sure the Nim binary is executable.
-    cmd(&"chmod +x {globalNimDir}/bin/nim")
+    runSafe(&"chmod +x {globalNimDir}/bin/nim")
 
   # Tell the user a single PATH change they can run now.
   let pathEnv = getEnv("PATH")
