@@ -58,7 +58,7 @@ jobs:
 
       - name: Create Hello World
         shell: bash
-        run: echo "Hello World" > hello.nim
+        run: echo "echo \"Hello World\"\n" > hello.nim
 
       - name: Compile & Run Hello World
         run: nim c -r hello.nim
