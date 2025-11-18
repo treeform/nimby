@@ -1,5 +1,5 @@
 
-name: Test install Nim
+name: Test install Nim form Source
 on:
   push:
     branches: [ master ]
@@ -9,40 +9,51 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+      fail-fast: false
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
       - uses: treeform/setup-nim-action@v3
 
       - name: Compile Nimby
+        shell: bash 
         run: nim c -d:release src/nimby.nim
 
       - name: Install Nim Compiler
-        run: src/nimby use -V 2.2.6
+        shell: bash
+        run: src/nimby use --source --verbose 2.2.4
 
       - name: Print Nimby Folder
+        shell: bash
         run: ls "$HOME/.nimby"
 
       - name: Print Nimby nim folder
+        shell: bash
         run: ls "$HOME/.nimby/nim"
 
       - name: Print Nimby nim/bin folder
+        shell: bash
         run: ls "$HOME/.nimby/nim/bin"
 
       - name: Add Nim to PATH
+        shell: bash
         run: echo "$HOME/.nimby/nim/bin" >> "$GITHUB_PATH"
 
       - name: Print PATH
+        shell: bash
         run: echo "$PATH"
 
       - name: Print Nim version (Full Path)
+        shell: bash
         run: $HOME/.nimby/nim/bin/nim --version
 
       - name: Print Nim version (Normal)
+        shell: bash
         run: nim --version
 
       - name: Print Which Nim
+        shell: bash
         run: which nim
 
       - name: List the Nim folder
@@ -51,4 +62,3 @@ jobs:
 
       - name: Compile & Run Hello World
         run: nim c -r tools/helloworld.nim
-
