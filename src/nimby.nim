@@ -8,6 +8,8 @@ const
   WorkerCount = 32
 
 type
+  NimbyError* = object of CatchableError
+
   Dependency* = object
     name*: string
     op*: string
@@ -40,21 +42,21 @@ proc info(message: string) =
   if verbose:
     echo message
 
-proc readFileSafe(fileName: string): string {.raises: [].} =
+proc readFileSafe(fileName: string): string =
   ## Read the file and return the content.
   try:
     return readFile(fileName)
   except:
-    quit("error reading file `" & fileName & "`: " & getCurrentExceptionMsg())
+    raise newException(NimbyError, "error reading file `" & fileName & "`: " & getCurrentExceptionMsg())
 
-proc writeFileSafe(fileName: string, content: string) {.raises: [].} =
+proc writeFileSafe(fileName: string, content: string)  =
   ## Write the file and return the content.
   try:
     writeFile(fileName, content)
   except:
-    quit("error writing file `" & fileName & "`: " & getCurrentExceptionMsg())
+    raise newException(NimbyError, "error writing file `" & fileName & "`: " & getCurrentExceptionMsg())
 
-proc runSafe(command: string) {.raises: [].} =
+proc runSafe(command: string) =
   ## Run the command and print the output if it fails.
   let exeName = command.split(" ")[0]
   let args = command.split(" ")[1..^1]
@@ -75,7 +77,7 @@ proc runSafe(command: string) {.raises: [].} =
       quit("error code: " & $p.peekExitCode())
     p.close()
   except:
-    quit("error running command `" & command & "`: " & $getCurrentExceptionMsg())
+    raise newException(NimbyError, "error running command `" & command & "`: " & $getCurrentExceptionMsg())
 
 template withLock(lock: Lock, body: untyped) =
   ## Acquire the lock and execute the body.
@@ -85,6 +87,16 @@ template withLock(lock: Lock, body: untyped) =
       body
     finally:
       release(lock)
+
+template retry(tries: int, body: untyped) =
+  for trying in 1 .. tries: # Some times the files are not immediately available.
+    try:
+      body
+    except NimbyError:
+      if trying == tries:
+        quit("Stopping after " & $trying & " tries: " & getCurrentExceptionMsg())
+      else:
+        sleep(100 * trying)
 
 proc timeStart() =
   ## Start the timer.
@@ -163,7 +175,7 @@ proc parseNimbleFile*(fileName: string): NimbleFile =
 
 proc getNimbleFile(name: string): NimbleFile =
   ## Get the .nimble file for a package.
-  for trying in 1 .. 3: # Some times the files are not immediately available.
+  retry(3):
     let
       localPath = name / name & ".nimble"
       globalPath = getGlobalPackagesDir() / name / name & ".nimble"
@@ -171,7 +183,6 @@ proc getNimbleFile(name: string): NimbleFile =
       return parseNimbleFile(localPath)
     if fileExists(globalPath):
       return parseNimbleFile(globalPath)
-    sleep(100)
 
 proc getGlobalPackages(): JsonNode =
   ## Fetch and return the global packages index (packages.json).
@@ -267,14 +278,15 @@ proc worker(id: int) {.thread.} =
 proc addConfigDir(path: string) =
   ## Add a directory to the nim.cfg file.
   withLock(jobLock):
-    let path = path.replace("\\", "/") # Always use Linux-style paths.
-    if not fileExists("nim.cfg"):
-      writeFileSafe("nim.cfg", "# Created by Nimby\n")
-    var nimCfg = readFileSafe("nim.cfg")
-    if nimCfg.contains(&"--path:\"{path}\""):
-      return
-    nimCfg.add(&"--path:\"{path}\"\n")
-    writeFileSafe("nim.cfg", nimCfg)
+    retry(3):
+      let path = path.replace("\\", "/") # Always use Linux-style paths.
+      if not fileExists("nim.cfg"):
+        writeFileSafe("nim.cfg", "# Created by Nimby\n")
+      var nimCfg = readFileSafe("nim.cfg")
+      if nimCfg.contains(&"--path:\"{path}\""):
+        return
+      nimCfg.add(&"--path:\"{path}\"\n")
+      writeFileSafe("nim.cfg", nimCfg)
 
 proc addConfigPackage(name: string) =
   ## Add a package to the nim.cfg file.
