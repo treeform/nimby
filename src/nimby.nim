@@ -4,6 +4,12 @@
 import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
   locks]
 
+when defined(monkey):
+  # Monkey mode: Randomly raise errors to test error handling and robustness.
+  import std/random
+  const MonkeyProbability = 10
+  randomize()
+
 const
   WorkerCount = 32
 
@@ -28,56 +34,19 @@ var
   source: bool = false
   updatedGlobalPackages: bool = false
   timeStarted: float64
-
+  
+  printLock: Lock
   jobLock: Lock
+  retryLock: Lock
+
   jobQueue: array[100, string]
   jobQueueStart: int = 0
   jobQueueEnd: int = 0
   jobsInProgress: int
 
 initLock(jobLock)
-
-proc info(message: string) =
-  ## Print an informational message if verbose is true.
-  if verbose:
-    echo message
-
-proc readFileSafe(fileName: string): string =
-  ## Read the file and return the content.
-  try:
-    return readFile(fileName)
-  except:
-    raise newException(NimbyError, "error reading file `" & fileName & "`: " & getCurrentExceptionMsg())
-
-proc writeFileSafe(fileName: string, content: string)  =
-  ## Write the file and return the content.
-  try:
-    writeFile(fileName, content)
-  except:
-    raise newException(NimbyError, "error writing file `" & fileName & "`: " & getCurrentExceptionMsg())
-
-proc runSafe(command: string) =
-  ## Run the command and print the output if it fails.
-  let exeName = command.split(" ")[0]
-  let args = command.split(" ")[1..^1]
-  try:
-    var options = {poUsePath}
-    if verbose:
-      # Print the command output to the console.
-      options.incl(poStdErrToStdOut)
-      options.incl(poParentStreams)
-    if verbose:
-      echo "> ", command
-    let p = startProcess(exeName, args=args, options=options)
-    if p.waitForExit(-1) != 0:
-      if not verbose:
-        echo "> ", command
-      echo p.peekableOutputStream().readAll()
-      echo p.peekableErrorStream().readAll()
-      quit("error code: " & $p.peekExitCode())
-    p.close()
-  except:
-    raise newException(NimbyError, "error running command `" & command & "`: " & $getCurrentExceptionMsg())
+initLock(printLock)
+initLock(retryLock)
 
 template withLock(lock: Lock, body: untyped) =
   ## Acquire the lock and execute the body.
@@ -88,15 +57,96 @@ template withLock(lock: Lock, body: untyped) =
     finally:
       release(lock)
 
-template retry(tries: int, body: untyped) =
-  for trying in 1 .. tries: # Some times the files are not immediately available.
-    try:
-      body
-    except NimbyError:
-      if trying == tries:
-        quit("Stopping after " & $trying & " tries: " & getCurrentExceptionMsg())
-      else:
-        sleep(100 * trying)
+proc info(message: string) =
+  ## Print an informational message if verbose is true.
+  if verbose:
+    # To prevent garbled output, lock the print lock.
+    withLock(printLock):
+      echo message
+
+proc print(message: string) =
+  ## Print a log message.
+  # To prevent garbled output, lock the print lock.
+  withLock(printLock):
+    echo message
+
+proc readFileSafe(fileName: string): string =
+  ## Read the file and return the content.
+  try:
+    when defined(monkey):
+      if rand(100) < MonkeyProbability:
+        raise newException(NimbyError, "error reading file `" & fileName & "`: " & "Monkey error")
+    return readFile(fileName)
+  except:
+    # Lock is normally not needed, but if we are retrying, lets be double safe.
+    withLock(retryLock):
+      for trying in 2 .. 3:
+        print &"Try {trying} of 3: {getCurrentExceptionMsg()}"
+        try:
+          return readFile(fileName)
+        except:
+          sleep(100 * trying)
+      raise newException(NimbyError, "error reading file `" & fileName & "`: " & getCurrentExceptionMsg())
+
+proc writeFileSafe(fileName: string, content: string) =
+  ## Write the file and return the content.
+  try:
+    when defined(monkey):
+      if rand(100) < MonkeyProbability:
+        raise newException(NimbyError, "error writing file `" & fileName & "`: " & "Monkey error")
+    writeFile(fileName, content)
+  except:
+    # Lock is normally not needed, but if we are retrying, lets be double safe.
+    withLock(retryLock):
+      for trying in 2 .. 3:
+        print &"Try {trying} of 3: {getCurrentExceptionMsg()}"
+        try:
+          writeFile(fileName, content)
+          return
+        except:
+          sleep(100 * trying)
+      raise newException(NimbyError, "error writing file `" & fileName & "`: " & getCurrentExceptionMsg())
+
+proc runOnce(command: string) =
+  let exeName = command.split(" ")[0]
+  let args = command.split(" ")[1..^1]
+  try:
+    var options = {poUsePath}
+    if verbose:
+      # Print the command output to the console.
+      options.incl(poStdErrToStdOut)
+      options.incl(poParentStreams)
+    if verbose:
+      print "> " & command
+    let p = startProcess(exeName, args=args, options=options)
+    if p.waitForExit(-1) != 0:
+      if not verbose:
+        print "> " & command
+      print p.peekableOutputStream().readAll()
+      print p.peekableErrorStream().readAll()
+      raise newException(NimbyError, "error code: " & $p.peekExitCode())
+    p.close()
+  except:
+    raise newException(NimbyError, "error running command `" & command & "`: " & $getCurrentExceptionMsg())
+  
+proc runSafe(command: string) =
+  ## Run the command and print the output if it fails.
+  try:
+    when defined(monkey):
+      if rand(100) < MonkeyProbability:
+        raise newException(NimbyError, "error starting process `" & command & "`: " & "Monkey error")
+    runOnce(command)
+  except:
+    # Lock is normally not needed, but if we are retrying, lets be double safe.
+    withLock(retryLock):
+      for trying in 2 .. 3:
+        print &"Try {trying} of 3: {getCurrentExceptionMsg()}"
+        try:
+          runOnce(command)
+          return
+        except:
+          sleep(100 * trying)
+      raise newException(NimbyError, "error running command `" & command & "`: " & getCurrentExceptionMsg())
 
 proc timeStart() =
   ## Start the timer.
@@ -106,30 +156,30 @@ proc timeEnd() =
   ## Stop the timer and print the time taken.
   let timeEnded = epochTime()
   let dt = timeEnded - timeStarted
-  echo &"Took: {dt:.2f} seconds"
+  print &"Took: {dt:.2f} seconds"
 
 proc writeVersion() =
   ## Print the version of Nimby.
-  echo "Nimby 0.1.11"
+  print "Nimby 0.1.11"
 
 proc writeHelp() =
   ## Show the help message.
-  echo "Usage: nimby <subcommand> [options]"
-  echo "  ~ Minimal package manager for Nim. ~"
-  echo "    -g, --global Install packages in the ~/.nimby/pkgs directory"
-  echo "    -v, --version print the version of Nimby"
-  echo "    -h, --help show this help message"
-  echo "    -V, --verbose print verbose output"
-  echo "Subcommands:"
-  echo "  install    install all Nim packages in the current directory"
-  echo "  update     update all Nim packages in the current directory"
-  echo "  remove     remove all Nim packages in the current directory"
-  echo "  list       list all Nim packages in the current directory"
-  echo "  tree       show all packages as a dependency tree"
-  echo "  doctor     diagnose all packages and fix linking issues"
-  echo "  lock       generate a lock file for a package"
-  echo "  sync       synchronize packages from a lock file"
-  echo "  help       show this help message"
+  print "Usage: nimby <subcommand> [options]"
+  print "  ~ Minimal package manager for Nim. ~"
+  print "    -g, --global Install packages in the ~/.nimby/pkgs directory"
+  print "    -v, --version print the version of Nimby"
+  print "    -h, --help show this help message"
+  print "    -V, --verbose print verbose output"
+  print "Subcommands:"
+  print "  install    install all Nim packages in the current directory"
+  print "  update     update all Nim packages in the current directory"
+  print "  remove     remove all Nim packages in the current directory"
+  print "  list       list all Nim packages in the current directory"
+  print "  tree       show all packages as a dependency tree"
+  print "  doctor     diagnose all packages and fix linking issues"
+  print "  lock       generate a lock file for a package"
+  print "  sync       synchronize packages from a lock file"
+  print "  help       show this help message"
 
 proc getGlobalPackagesDir(): string =
   ## Get the global packages directory.
@@ -175,14 +225,13 @@ proc parseNimbleFile*(fileName: string): NimbleFile =
 
 proc getNimbleFile(name: string): NimbleFile =
   ## Get the .nimble file for a package.
-  retry(3):
-    let
-      localPath = name / name & ".nimble"
-      globalPath = getGlobalPackagesDir() / name / name & ".nimble"
-    if fileExists(localPath):
-      return parseNimbleFile(localPath)
-    if fileExists(globalPath):
-      return parseNimbleFile(globalPath)
+  let
+    localPath = name / name & ".nimble"
+    globalPath = getGlobalPackagesDir() / name / name & ".nimble"
+  if fileExists(localPath):
+    return parseNimbleFile(localPath)
+  if fileExists(globalPath):
+    return parseNimbleFile(globalPath)
 
 proc getGlobalPackages(): JsonNode =
   ## Fetch and return the global packages index (packages.json).
@@ -192,7 +241,7 @@ proc getGlobalPackages(): JsonNode =
       info "Packages.json not found, cloning..."
       withLock(jobLock):
         if not fileExists(globalPackagesDir / "packages.json") and not updatedGlobalPackages:
-          runSafe(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
+          runOnce(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
         updatedGlobalPackages = true
     else:
       info "Packages.json found, pulling..."
@@ -278,15 +327,14 @@ proc worker(id: int) {.thread.} =
 proc addConfigDir(path: string) =
   ## Add a directory to the nim.cfg file.
   withLock(jobLock):
-    retry(3):
-      let path = path.replace("\\", "/") # Always use Linux-style paths.
-      if not fileExists("nim.cfg"):
-        writeFileSafe("nim.cfg", "# Created by Nimby\n")
-      var nimCfg = readFileSafe("nim.cfg")
-      if nimCfg.contains(&"--path:\"{path}\""):
-        return
-      nimCfg.add(&"--path:\"{path}\"\n")
-      writeFileSafe("nim.cfg", nimCfg)
+    let path = path.replace("\\", "/") # Always use Linux-style paths.
+    if not fileExists("nim.cfg"):
+      writeFileSafe("nim.cfg", "# Created by Nimby\n")
+    var nimCfg = readFileSafe("nim.cfg")
+    if nimCfg.contains(&"--path:\"{path}\""):
+      return
+    nimCfg.add(&"--path:\"{path}\"\n")
+    writeFileSafe("nim.cfg", nimCfg)
 
 proc addConfigPackage(name: string) =
   ## Add a package to the nim.cfg file.
@@ -346,17 +394,17 @@ proc fetchPackage(argument: string) =
 
     if not dirExists(packagePath):
       # Clone the package from the URL at the given Git hash.
-      runSafe(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
-      runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
-      runSafe(&"git -C {packagePath} checkout {packageGitHash}")
-      echo &"Installed package: {packageName}"
+      runOnce(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
+      runOnce(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+      runOnce(&"git -C {packagePath} checkout {packageGitHash}")
+      print &"Installed package: {packageName}"
     else:
       # Check whether the package is at the given Git hash.
       let gitHash = readGitHash(packageName)
       if gitHash != packageGitHash:
         runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
         runSafe(&"git -C {packagePath} checkout {packageGitHash}")
-        echo &"Updated package: {packageName}"
+        print &"Updated package: {packageName}"
       else:
         info &"Package {packageName} has the correct hash."
     addConfigPackage(packageName)
@@ -383,9 +431,9 @@ proc fetchPackage(argument: string) =
       if dirExists(path):
         info &"Package already exists: {path}"
       else:
-        runSafe(&"git clone --depth 1 {url} {path}")
+        runOnce(&"git clone --depth 1 {url} {path}")
       addConfigPackage(name)
-      echo &"Installed package: {name}"
+      print &"Installed package: {name}"
       fetchDeps(name)
     else:
       quit &"Unknown method {methodKind} for fetching package {name}"
@@ -393,7 +441,7 @@ proc fetchPackage(argument: string) =
 proc installPackage(argument: string) =
   ## Install a package.
   timeStart()
-  echo &"Installing package: {argument}"
+  print &"Installing package: {argument}"
 
   if dirExists(argument):
     quit("Package already installed.")
@@ -428,7 +476,7 @@ proc updatePackage(argument: string) =
   if not dirExists(packagePath):
     quit(&"Package not found: {packagePath}")
   runSafe(&"git -C {packagePath} pull")
-  echo &"Updated package: {argument}"
+  print &"Updated package: {argument}"
 
 proc removePackage(argument: string) =
   ## Remove a package.
@@ -443,7 +491,7 @@ proc removePackage(argument: string) =
   if not dirExists(packagePath):
     quit(&"Package not found: {packagePath}")
   removeDir(packagePath)
-  echo &"Removed package: {argument}"
+  print &"Removed package: {argument}"
 
 proc listPackage(argument: string) =
   ## List a package.
@@ -453,7 +501,7 @@ proc listPackage(argument: string) =
     let packageVersion = nimbleFile.version
     let gitUrl = readPackageUrl(packageName)
     let gitHash = readGitHash(packageName)
-    echo &"{packageName} {packageVersion} {gitUrl} {gitHash}"
+    print &"{packageName} {packageVersion} {gitUrl} {gitHash}"
 
 proc listPackages(argument: string) =
   ## List all packages in the workspace.
@@ -471,7 +519,7 @@ proc treePackage(name, indent: string) =
   if nimbleFile != nil:
     let packageName = name
     let packageVersion = nimbleFile.version
-    echo &"{indent}{packageName} {packageVersion}"
+    print &"{indent}{packageName} {packageVersion}"
     for dependency in nimbleFile.dependencies:
       treePackage(dependency.name, indent & "  ")
 
@@ -489,16 +537,16 @@ proc checkPackage(packageName: string) =
   ## Check a package.
   let nimbleFile = getNimbleFile(packageName)
   if nimbleFile == nil:
-    echo &"Package `{packageName}` is not a Nim project (no .nimble file found)."
+    print &"Package `{packageName}` is not a Nim project (no .nimble file found)."
     return
   for dependency in nimbleFile.dependencies:
     if not dirExists(dependency.name):
-      echo &"Dependency `{dependency.name}` not found for package `{packageName}`."
+      print &"Dependency `{dependency.name}` not found for package `{packageName}`."
   if not fileExists(&"nim.cfg"):
     quit(&"Package `nim.cfg` not found.")
   let nimCfg = readFileSafe("nim.cfg")
   if not nimCfg.contains(&"--path:\"{packageName}/") and not nimCfg.contains(&"--path:\"{packageName}\""):
-    echo &"Package `{packageName}` not found in nim.cfg."
+    print &"Package `{packageName}` not found in nim.cfg."
 
 proc doctorPackage(argument: string) =
   ## Diagnose packages and fix configuration issues.
@@ -529,7 +577,7 @@ proc lockPackage(argument: string) =
           let url = readPackageUrl(dependency.name)
           let version = getNimbleFile(dependency.name).version
           let gitHash = readGitHash(dependency.name)
-          echo &"{dependency.name} {version} {url} {gitHash}"
+          print &"{dependency.name} {version} {url} {gitHash}"
           listedDeps.add(dependency.name)
           walkDeps(dependency.name)
     walkDeps(packageName)
@@ -576,7 +624,7 @@ proc installNim(nimVersion: string) =
     setCurrentDir(installDir)
 
     if source:
-      runSafe(&"git clone https://github.com/nim-lang/Nim.git --branch v{nimVersion} --depth 1 {installDir}")
+      runOnce(&"git clone https://github.com/nim-lang/Nim.git --branch v{nimVersion} --depth 1 {installDir}")
       setCurrentDir(installDir)
       when defined(windows):
         runSafe("build_all.bat")
@@ -599,7 +647,7 @@ proc installNim(nimVersion: string) =
     else:
       when defined(windows):
         let url = &"https://nim-lang.org/download/nim-{nimVersion}_x64.zip"
-        echo &"Downloading: {url}"
+        print &"Downloading: {url}"
         runSafe(&"curl -sSL {url} -o nim.zip")
         runSafe("powershell -NoProfile -Command Expand-Archive -Force -Path nim.zip -DestinationPath .")
         let extractedDir = &"nim-{nimVersion}"
@@ -614,30 +662,30 @@ proc installNim(nimVersion: string) =
 
       elif defined(macosx):
         let url = &"https://github.com/treeform/nimbuilds/raw/refs/heads/master/nim-{nimVersion}-macosx_arm64.tar.xz"
-        echo &"Downloading: {url}"
+        print &"Downloading: {url}"
         runSafe(&"curl -sSL {url} -o nim.tar.xz")
-        echo "Extracting the Nim compiler"
+        print "Extracting the Nim compiler"
         runSafe("tar xf nim.tar.xz --strip-components=1")
 
       elif defined(linux):
         let url = &"https://nim-lang.org/download/nim-{nimVersion}-linux_x64.tar.xz"
-        echo &"Downloading: {url}"
+        print &"Downloading: {url}"
         runSafe(&"curl -sSL {url} -o nim.tar.xz")
-        echo "Extracting the Nim compiler"
+        print "Extracting the Nim compiler"
         runSafe("tar xf nim.tar.xz --strip-components=1")
 
       else:
         quit "Unsupported platform for Nim installation"
 
     setCurrentDir(previousDir)
-    echo &"Installed Nim {nimVersion} to: {installDir}"
+    print &"Installed Nim {nimVersion} to: {installDir}"
 
   # copy nim-{nimVersion} to global nim directory
   let versionNimDir = nimbyDir / "nim-" & nimVersion
   let globalNimDir = nimbyDir / "nim"
   removeDir(globalNimDir)
   copyDir(versionNimDir, globalNimDir)
-  echo &"Copied {versionNimDir} to {globalNimDir}"
+  print &"Copied {versionNimDir} to {globalNimDir}"
 
   when not defined(windows):
     # Make sure the Nim binary is executable.
@@ -648,13 +696,13 @@ proc installNim(nimVersion: string) =
   let binPath = nimbyDir / "nim" / "bin"
   info &"Checking if Nim is in the PATH: {pathEnv}"
   if not pathEnv.contains(binPath):
-    echo "Add Nim to your PATH for this session with one of:"
+    print "Add Nim to your PATH for this session with one of:"
     when defined(windows):
       let winBin = (binPath.replace("/", "\\"))
-      echo &"$env:PATH = \"{winBin};$env:PATH\"   # PowerShell"
+      print &"$env:PATH = \"{winBin};$env:PATH\"   # PowerShell"
     else:
-      echo &"export PATH=\"{binPath}:$PATH\"      # bash/zsh"
-      echo &"fish_add_path {binPath}              # fish"
+      print &"export PATH=\"{binPath}:$PATH\"      # bash/zsh"
+      print &"fish_add_path {binPath}              # fish"
 
 when isMainModule:
 
@@ -678,7 +726,7 @@ when isMainModule:
       of "verbose", "V":
         verbose = true
       of "global", "g":
-        echo "Using global packages directory."
+        print "Using global packages directory."
         global = true
         if not dirExists(getGlobalPackagesDir()):
           info &"Creating global packages directory: {getGlobalPackagesDir()}"
@@ -686,7 +734,7 @@ when isMainModule:
       of "source", "s":
         source = true
       else:
-        echo "Unknown option: " & key
+        print "Unknown option: " & key
         quit(1)
     of cmdEnd:
       assert(false) # cannot happen
