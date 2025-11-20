@@ -34,7 +34,7 @@ var
   source: bool = false
   updatedGlobalPackages: bool = false
   timeStarted: float64
-  
+
   printLock: Lock
   jobLock: Lock
   retryLock: Lock
@@ -128,7 +128,7 @@ proc runOnce(command: string) =
     p.close()
   except:
     raise newException(NimbyError, "error running command `" & command & "`: " & $getCurrentExceptionMsg())
-  
+
 proc runSafe(command: string) =
   ## Run the command and print the output if it fails.
   try:
@@ -160,7 +160,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Print the version of Nimby.
-  print "Nimby 0.1.11"
+  print "Nimby 0.1.12"
 
 proc writeHelp() =
   ## Show the help message.
