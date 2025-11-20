@@ -15,7 +15,7 @@ jobs:
       - uses: treeform/setup-nim-action@v3
 
       - name: Build Nimby
-        run: nim c -d:release src/nimby.nim
+        run: nim c -d:release -d:monkey src/nimby.nim
 
       - name: Add Nimby to PATH
         run: echo "$PWD/src" >> "$GITHUB_PATH"

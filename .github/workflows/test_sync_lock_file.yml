@@ -15,7 +15,7 @@ jobs:
       - uses: treeform/setup-nim-action@v3
 
       - name: Compile Nimby
-        run: nim c -d:release src/nimby.nim
+        run: nim c -d:release -d:monkey src/nimby.nim
 
       - name: Clone Metta (with MettaScope)
         run: git clone --depth 1 https://github.com/Metta-AI/metta.git
