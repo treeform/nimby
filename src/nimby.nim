@@ -37,6 +37,8 @@ var
   
   printLock: Lock
   jobLock: Lock
+  retryLock: Lock
+
   jobQueue: array[100, string]
   jobQueueStart: int = 0
   jobQueueEnd: int = 0
@@ -44,6 +46,7 @@ var
 
 initLock(jobLock)
 initLock(printLock)
+initLock(retryLock)
 
 template withLock(lock: Lock, body: untyped) =
   ## Acquire the lock and execute the body.
@@ -76,7 +79,7 @@ proc readFileSafe(fileName: string): string =
     return readFile(fileName)
   except:
     # Lock is normally not needed, but if we are retrying, lets be double safe.
-    withLock(jobLock):
+    withLock(retryLock):
       for trying in 2 .. 3:
         print &"Try {trying} of 3: {getCurrentExceptionMsg()}"
         try:
@@ -94,7 +97,7 @@ proc writeFileSafe(fileName: string, content: string) =
     writeFile(fileName, content)
   except:
     # Lock is normally not needed, but if we are retrying, lets be double safe.
-    withLock(jobLock):
+    withLock(retryLock):
       for trying in 2 .. 3:
         print &"Try {trying} of 3: {getCurrentExceptionMsg()}"
         try:
@@ -135,7 +138,7 @@ proc runSafe(command: string) =
     runOnce(command)
   except:
     # Lock is normally not needed, but if we are retrying, lets be double safe.
-    withLock(jobLock):
+    withLock(retryLock):
       for trying in 2 .. 3:
         print &"Try {trying} of 3: {getCurrentExceptionMsg()}"
         try:
