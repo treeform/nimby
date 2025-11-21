@@ -260,12 +260,16 @@ proc getGlobalPackage(packageName: string): JsonNode =
       return p
 
 proc fetchPackage(argument: string) {.gcsafe.}
+proc addTreeToConfig(path: string) {.gcsafe.}
 
 proc enqueuePackage(packageName: string) =
   ## Add a package to the job queue.
   withLock(jobLock):
-    jobQueue[jobQueueEnd] = packageName
-    inc jobQueueEnd
+    if packageName notin jobQueue:
+      jobQueue[jobQueueEnd] = packageName
+      inc jobQueueEnd
+    else:
+      info &"Package already in queue: {packageName}"
 
 proc popPackage(): string =
   ## Pop a package from the job queue or return an empty string.
@@ -317,6 +321,8 @@ proc worker(id: int) {.thread.} =
     if dirExists(pkg):
       withLock(jobLock):
         dec jobsInProgress
+      info &"Package already exists: {pkg}"
+      addTreeToConfig(pkg)
       continue
 
     fetchPackage(pkg)
@@ -333,7 +339,9 @@ proc addConfigDir(path: string) =
     var nimCfg = readFileSafe("nim.cfg")
     if nimCfg.contains(&"--path:\"{path}\""):
       return
-    nimCfg.add(&"--path:\"{path}\"\n")
+    let line = &"--path:\"{path}\"\n"
+    info &"Adding nim.cfg line: {line.strip()}"
+    nimCfg.add(line)
     writeFileSafe("nim.cfg", nimCfg)
 
 proc addConfigPackage(name: string) =
@@ -362,6 +370,15 @@ proc removeConfigPackage(name: string) =
     quit(&"Can't remove config package: Nimble file not found: {name}")
   removeConfigDir(package.installDir / package.srcDir)
 
+proc addTreeToConfig(path: string) =
+  ## Add the tree of a package to the nim.cfg file.
+  let nimbleFile = getNimbleFile(path)
+  if nimbleFile == nil:
+    quit(&"Can't add tree to config: Nimble file not found: {path}")
+  addConfigDir(nimbleFile.installDir / nimbleFile.srcDir)
+  for dependency in nimbleFile.dependencies:
+    enqueuePackage(dependency.name)
+
 proc fetchPackage(argument: string) =
   ## Main recursive function to fetch a package and its dependencies.
   if argument.endsWith(".nimble"):
@@ -371,9 +388,11 @@ proc fetchPackage(argument: string) =
       quit(&"Local .nimble file not found: {nimblePath}")
     else:
       info &"Using local .nimble file: {nimblePath}"
-    let packageName = nimblePath.splitFile().name
-    addConfigPackage(packageName)
-    for dependency in getNimbleFile(packageName).dependencies:
+    let
+      packageName = nimblePath.splitFile().name
+      packagePath = nimblePath.parentDir()
+    addConfigDir(packagePath)
+    for dependency in parseNimbleFile(nimblePath).dependencies:
       enqueuePackage(dependency.name)
 
   elif argument.contains(" "):
