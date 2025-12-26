@@ -414,8 +414,8 @@ proc fetchPackage(argument: string) =
     if not dirExists(packagePath):
       # Clone the package from the URL at the given Git hash.
       runOnce(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
-      runOnce(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
-      runOnce(&"git -C {packagePath} checkout {packageGitHash}")
+      runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+      runSafe(&"git -C {packagePath} checkout {packageGitHash}")
       print &"Installed package: {packageName}"
     else:
       # Check whether the package is at the given Git hash.
