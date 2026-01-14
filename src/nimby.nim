@@ -391,7 +391,7 @@ proc fetchPackage(argument: string) =
     let
       packageName = nimblePath.splitFile().name
       packagePath = nimblePath.parentDir()
-    addConfigDir(packagePath)
+    addConfigPackage(packageName)
     for dependency in parseNimbleFile(nimblePath).dependencies:
       enqueuePackage(dependency.name)
 
