@@ -185,6 +185,24 @@ proc getGlobalPackagesDir(): string =
   ## Get the global packages directory.
   "~/.nimby/pkgs".expandTilde()
 
+proc isGitUrl*(s: string): bool =
+  ## Check if a string is a git URL.
+  s.startsWith("http://") or s.startsWith("https://") or s.startsWith("git@")
+
+proc extractPackageNameFromUrl*(url: string): string =
+  ## Extract package name from a git URL.
+  var cleanUrl = url
+  if "#" in cleanUrl:
+    cleanUrl = cleanUrl.split("#")[0]
+  if cleanUrl.endsWith(".git"):
+    cleanUrl = cleanUrl[0..^5]
+  result = cleanUrl.split("/")[^1]
+
+proc extractUrlFragment*(url: string): string =
+  ## Extract fragment (branch/tag/commit) from URL.
+  if "#" in url:
+    result = url.split("#")[1]
+
 proc parseNimbleFile*(fileName: string): NimbleFile =
   ## Parse the .nimble file and return a NimbleFile object.
   let nimble = readFileSafe(fileName)
@@ -427,6 +445,30 @@ proc fetchPackage(argument: string) =
       else:
         info &"Package {packageName} has the correct hash."
     addConfigPackage(packageName)
+
+  elif isGitUrl(argument):
+
+    # Install directly from git URL.
+    let url = argument
+    let packageName = extractPackageNameFromUrl(url)
+    let fragment = extractUrlFragment(url)
+    let path =
+      if global:
+        getGlobalPackagesDir() / packageName
+      else:
+        packageName
+
+    info &"Cloning package from URL: {url} to {path}"
+
+    if dirExists(path):
+      info &"Package already exists: {path}"
+    else:
+      runOnce(&"git clone --depth 1 {url} {path}")
+      if fragment != "":
+        runSafe(&"git -C {path} checkout {fragment}")
+    addConfigPackage(packageName)
+    print &"Installed package: {packageName}"
+    fetchDeps(packageName)
 
   else:
 
