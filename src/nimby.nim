@@ -110,6 +110,7 @@ proc writeFileSafe(fileName: string, content: string) =
 proc runOnce(command: string) =
   let exeName = command.split(" ")[0]
   let args = command.split(" ")[1..^1]
+  var p: Process = nil
   try:
     var options = {poUsePath}
     if verbose:
@@ -118,16 +119,27 @@ proc runOnce(command: string) =
       options.incl(poParentStreams)
     if verbose:
       print "> " & command
-    let p = startProcess(exeName, args=args, options=options)
-    if p.waitForExit(-1) != 0:
+    p = startProcess(exeName, args=args, options=options)
+    let exitCode = p.waitForExit(-1)
+    if exitCode != 0:
       if not verbose:
         print "> " & command
-      print p.peekableOutputStream().readAll()
-      print p.peekableErrorStream().readAll()
-      raise newException(NimbyError, "error code: " & $p.peekExitCode())
-    p.close()
+      try:
+        print p.peekableOutputStream().readAll()
+        print p.peekableErrorStream().readAll()
+      except:
+        discard  # Ignore stream read errors
+      raise newException(NimbyError, "error code: " & $exitCode)
+  except NimbyError:
+    raise
   except:
     raise newException(NimbyError, "error running command `" & command & "`: " & $getCurrentExceptionMsg())
+  finally:
+    if p != nil:
+      try:
+        p.close()
+      except:
+        discard  # Ignore close errors
 
 proc runSafe(command: string) =
   ## Run the command and print the output if it fails.
@@ -413,9 +425,9 @@ proc fetchPackage(argument: string) =
 
     if not dirExists(packagePath):
       # Clone the package from the URL at the given Git hash.
-      runOnce(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
-      runOnce(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
-      runOnce(&"git -C {packagePath} checkout {packageGitHash}")
+      runSafe(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
+      runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+      runSafe(&"git -C {packagePath} checkout {packageGitHash}")
       print &"Installed package: {packageName}"
     else:
       # Check whether the package is at the given Git hash.
