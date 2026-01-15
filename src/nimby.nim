@@ -1,8 +1,9 @@
 
 
 # To make Nimby easy to install, it depends only on system packages.
-import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
-  locks]
+import
+  std/[os, json, times, osproc, parseopt, strutils, strformat, streams, locks],
+  webby/urls
 
 when defined(monkey):
   # Monkey mode: Randomly raise errors to test error handling and robustness.
@@ -185,23 +186,40 @@ proc getGlobalPackagesDir(): string =
   ## Get the global packages directory.
   "~/.nimby/pkgs".expandTilde()
 
-proc isGitUrl*(s: string): bool =
-  ## Check if a string is a git URL.
-  s.startsWith("http://") or s.startsWith("https://") or s.startsWith("git@")
+proc isHttpUrl(s: string): bool =
+  s.startsWith("http://") or s.startsWith("https://")
+
+proc isGitUrl(s: string): bool =
+  s.isHttpUrl or s.startsWith("git@")
 
 proc extractPackageNameFromUrl*(url: string): string =
   ## Extract package name from a git URL.
-  var cleanUrl = url
-  if "#" in cleanUrl:
-    cleanUrl = cleanUrl.split("#")[0]
-  if cleanUrl.endsWith(".git"):
-    cleanUrl = cleanUrl[0..^5]
-  result = cleanUrl.split("/")[^1]
+  if url.isHttpUrl:
+    let parsedUrl = parseUrl(url)
+    let pathSegments = parsedUrl.paths
+    if pathSegments.len > 0:
+      var packageName = pathSegments[^1]
+      if packageName.endsWith(".git"):
+        packageName = packageName[0..^5]
+      result = packageName
+  else:
+    # manual parsing for SSH URLs.
+    var cleanUrl = url
+    if "#" in cleanUrl:
+      cleanUrl = cleanUrl.split("#")[0]
+    if cleanUrl.endsWith(".git"):
+      cleanUrl = cleanUrl[0..^5]
+    result = cleanUrl.split("/")[^1]
 
 proc extractUrlFragment*(url: string): string =
   ## Extract fragment (branch/tag/commit) from URL.
-  if "#" in url:
-    result = url.split("#")[1]
+  if url.isHttpUrl:
+    let parsedUrl = parseUrl(url)
+    result = parsedUrl.fragment
+  else:
+    # manual parsing for SSH URLs.
+    if "#" in url:
+      result = url.split("#")[1]
 
 proc parseNimbleFile*(fileName: string): NimbleFile =
   ## Parse the .nimble file and return a NimbleFile object.
