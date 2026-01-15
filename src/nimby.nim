@@ -189,7 +189,7 @@ proc getGlobalPackagesDir(): string =
 proc isHttpUrl(s: string): bool =
   s.startsWith("http://") or s.startsWith("https://")
 
-proc isGitUrl*(s: string): bool =
+proc isGitUrl(s: string): bool =
   s.isHttpUrl or s.startsWith("git@")
 
 proc extractPackageNameFromUrl*(url: string): string =
