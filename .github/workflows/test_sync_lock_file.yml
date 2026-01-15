@@ -15,7 +15,7 @@ jobs:
       - uses: treeform/setup-nim-action@v3
 
       - name: fetch dependencies
-        run: src/nimby sync -g nimby.lock
+        run: nimby sync -g nimby.lock
 
       - name: Compile Nimby
         run: nim c -d:release -d:monkey src/nimby.nim
