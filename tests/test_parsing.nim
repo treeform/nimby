@@ -68,4 +68,24 @@ doAssert n5.dependencies.len == 1
 doAssert n5.dependencies[0] == Dependency(name: "vmath", op: ">=", version: "1.0.0")
 removeFile(path5)
 
-echo "All parseNimbleFile tests passed."
+echo "Test 6: isGitUrl detects various git URL formats"
+doAssert isGitUrl("https://github.com/treeform/silky") == true, "HTTPS URL should be detected"
+doAssert isGitUrl("http://github.com/treeform/silky") == true, "HTTP URL should be detected"
+doAssert isGitUrl("git@github.com:treeform/silky.git") == true, "SSH URL should be detected"
+doAssert isGitUrl("silky") == false, "Package name should not be detected as URL"
+doAssert isGitUrl("") == false, "Empty string should not be detected as URL"
+
+echo "Test 7: extractPackageNameFromUrl extracts package names correctly"
+doAssert extractPackageNameFromUrl("https://github.com/treeform/silky") == "silky", "HTTPS URL without .git"
+doAssert extractPackageNameFromUrl("https://github.com/treeform/shady.git") == "shady", "HTTPS URL with .git"
+doAssert extractPackageNameFromUrl("https://github.com/treeform/shady.git#head") == "shady", "HTTPS URL with fragment"
+doAssert extractPackageNameFromUrl("git@github.com:treeform/vmath.git") == "vmath", "SSH URL"
+doAssert extractPackageNameFromUrl("https://gitea.example.com/user/my-package") == "my-package", "Custom domain"
+
+echo "Test 8: extractUrlFragment extracts fragments correctly"
+doAssert extractUrlFragment("https://github.com/treeform/shady.git#head") == "head", "Fragment after #"
+doAssert extractUrlFragment("https://github.com/treeform/shady.git#v1.0.0") == "v1.0.0", "Version fragment"
+doAssert extractUrlFragment("https://github.com/treeform/shady.git") == "", "No fragment"
+doAssert extractUrlFragment("https://github.com/treeform/shady.git#") == "", "Empty fragment"
+
+echo "All parseNimbleFile and URL helper tests passed."
