@@ -12,6 +12,7 @@ when defined(monkey):
 
 const
   WorkerCount = 32
+  lockDir = "nimbylock"
 
 type
   NimbyError* = object of CatchableError
@@ -69,6 +70,40 @@ proc print(message: string) =
   # To prevent garbled output, lock the print lock.
   withLock(printLock):
     echo message
+
+proc getGlobalNimbyDir(): string =
+  ## Get the global packages directory.
+  "~/.nimby".expandTilde()
+
+proc getGlobalPackagesDir(): string =
+  ## Get the global packages directory.
+  getGlobalNimbyDir() / "pkgs"
+
+proc getLockDirPath(): string =
+  getGlobalNimbyDir() / lockDir
+
+proc acquireGlobalLock(): bool =
+  # We use a directory because creating a directory is atomic and we can know
+  # if it already existed or not. Checking for the existance of a file and then
+  # creating it if needed is not atomic.
+  let lockPath = getLockDirPath()
+  try:
+    let alreadyExists = existsOrCreateDir(lockPath)
+    return not alreadyExists
+  except:
+    return false
+
+proc releaseGlobalLock() =
+  let lockPath = getLockDirPath()
+  removeDir(lockPath)
+
+proc nimbyQuit(errorCode: int) =
+  releaseGlobalLock()
+  quit(errorCode)
+
+proc nimbyQuit(errorMsg: string) =
+  releaseGlobalLock()
+  quit(errorMsg)
 
 proc readFileSafe(fileName: string): string =
   ## Read the file and return the content.
@@ -180,10 +215,6 @@ proc writeHelp() =
   print "  lock       generate a lock file for a package"
   print "  sync       synchronize packages from a lock file"
   print "  help       show this help message"
-
-proc getGlobalPackagesDir(): string =
-  ## Get the global packages directory.
-  "~/.nimby/pkgs".expandTilde()
 
 proc isGitUrl*(s: string): bool =
   ## Check if a string is a git URL.
@@ -318,7 +349,7 @@ proc fetchDeps(packageName: string) =
   ## Fetch the dependencies of a package.
   let package = getNimbleFile(packageName)
   if package == nil:
-    quit(&"Can't fetch deps for: Nimble file not found: {packageName}")
+    nimbyQuit(&"Can't fetch deps for: Nimble file not found: {packageName}")
   for dep in package.dependencies:
     info &"Dependency: {dep}"
     enqueuePackage(dep.name)
@@ -366,7 +397,7 @@ proc addConfigPackage(name: string) =
   ## Add a package to the nim.cfg file.
   let package = getNimbleFile(name)
   if package == nil:
-    quit(&"Can't add config package: Nimble file not found: {name}")
+    nimbyQuit(&"Can't add config package: Nimble file not found: {name}")
   addConfigDir(package.installDir / package.srcDir)
 
 proc removeConfigDir(path: string) =
@@ -385,14 +416,14 @@ proc removeConfigPackage(name: string) =
   ## Remove the package from the nim.cfg file.
   let package = getNimbleFile(name)
   if package == nil:
-    quit(&"Can't remove config package: Nimble file not found: {name}")
+    nimbyQuit(&"Can't remove config package: Nimble file not found: {name}")
   removeConfigDir(package.installDir / package.srcDir)
 
 proc addTreeToConfig(path: string) =
   ## Add the tree of a package to the nim.cfg file.
   let nimbleFile = getNimbleFile(path)
   if nimbleFile == nil:
-    quit(&"Can't add tree to config: Nimble file not found: {path}")
+    nimbyQuit(&"Can't add tree to config: Nimble file not found: {path}")
   addConfigDir(nimbleFile.installDir / nimbleFile.srcDir)
   for dependency in nimbleFile.dependencies:
     enqueuePackage(dependency.name)
@@ -403,7 +434,7 @@ proc fetchPackage(argument: string) =
     # Package from a Nimble file.
     let nimblePath = argument
     if not fileExists(nimblePath):
-      quit(&"Local .nimble file not found: {nimblePath}")
+      nimbyQuit(&"Local .nimble file not found: {nimblePath}")
     else:
       info &"Using local .nimble file: {nimblePath}"
     let
@@ -475,7 +506,7 @@ proc fetchPackage(argument: string) =
     # Install a global or local package.
     let package = getGlobalPackage(argument)
     if package == nil:
-      quit &"Package `{argument}` not found in global packages."
+      nimbyQuit(&"Package `{argument}` not found in global packages.")
     let
       name = package["name"].getStr()
       methodKind = package["method"].getStr()
@@ -497,7 +528,7 @@ proc fetchPackage(argument: string) =
       print &"Installed package: {name}"
       fetchDeps(name)
     else:
-      quit &"Unknown method {methodKind} for fetching package {name}"
+      nimbyQuit(&"Unknown method {methodKind} for fetching package {name}")
 
 proc installPackage(argument: string) =
   ## Install a package.
@@ -505,7 +536,7 @@ proc installPackage(argument: string) =
   print &"Installing package: {argument}"
 
   if dirExists(argument):
-    quit("Package already installed.")
+    nimbyQuit("Package already installed.")
 
   # init job queue
   jobQueueStart = 0
@@ -523,34 +554,34 @@ proc installPackage(argument: string) =
     joinThread(threads[i])
 
   timeEnd()
-  quit(0)
+  nimbyQuit(0)
 
 proc updatePackage(argument: string) =
   ## Update a package.
   if argument == "":
-    quit("No package specified for update")
+    nimbyQuit("No package specified for update")
   info &"Updating package: {argument}"
   let package = getNimbleFile(argument)
   if package == nil:
-    quit(&"Can't update package: Nimble file not found: {argument}")
+    nimbyQuit(&"Can't update package: Nimble file not found: {argument}")
   let packagePath = package.installDir
   if not dirExists(packagePath):
-    quit(&"Package not found: {packagePath}")
+    nimbyQuit(&"Package not found: {packagePath}")
   runSafe(&"git -C {packagePath} pull")
   print &"Updated package: {argument}"
 
 proc removePackage(argument: string) =
   ## Remove a package.
   if argument == "":
-    quit("No package specified for removal")
+    nimbyQuit("No package specified for removal")
   info &"Removing package: {argument}"
   removeConfigPackage(argument)
   let package = getNimbleFile(argument)
   if package == nil:
-    quit(&"Can't remove package: Nimble file not found: {argument}")
+    nimbyQuit(&"Can't remove package: Nimble file not found: {argument}")
   let packagePath = package.installDir
   if not dirExists(packagePath):
-    quit(&"Package not found: {packagePath}")
+    nimbyQuit(&"Package not found: {packagePath}")
   removeDir(packagePath)
   print &"Removed package: {argument}"
 
@@ -604,7 +635,7 @@ proc checkPackage(packageName: string) =
     if not dirExists(dependency.name):
       print &"Dependency `{dependency.name}` not found for package `{packageName}`."
   if not fileExists(&"nim.cfg"):
-    quit(&"Package `nim.cfg` not found.")
+    nimbyQuit(&"Package `nim.cfg` not found.")
   let nimCfg = readFileSafe("nim.cfg")
   if not nimCfg.contains(&"--path:\"{packageName}/") and not nimCfg.contains(&"--path:\"{packageName}\""):
     print &"Package `{packageName}` not found in nim.cfg."
@@ -616,7 +647,7 @@ proc doctorPackage(argument: string) =
   # Ensure all dependencies are installed.
   if argument != "":
     if not dirExists(argument):
-      quit(&"Package `{argument}` not found.")
+      nimbyQuit(&"Package `{argument}` not found.")
     let packageName = argument
     checkPackage(packageName)
   else:
@@ -650,7 +681,7 @@ proc syncPackage(path: string) =
   timeStart()
 
   if not fileExists(path):
-    quit(&"Package lock file `{path}` not found.")
+    nimbyQuit(&"Package lock file `{path}` not found.")
 
   for line in readFileSafe(path).splitLines():
     let parts = line.split(" ")
@@ -666,7 +697,7 @@ proc syncPackage(path: string) =
     joinThread(threads[i])
 
   timeEnd()
-  quit(0)
+  nimbyQuit(0)
 
 proc installNim(nimVersion: string) =
   ## Install a specific version of Nim.
@@ -736,7 +767,7 @@ proc installNim(nimVersion: string) =
         runSafe("tar xf nim.tar.xz --strip-components=1")
 
       else:
-        quit "Unsupported platform for Nim installation"
+        nimbyQuit "Unsupported platform for Nim installation"
 
     setCurrentDir(previousDir)
     print &"Installed Nim {nimVersion} to: {installDir}"
@@ -800,6 +831,9 @@ when isMainModule:
     of cmdEnd:
       assert(false) # cannot happen
 
+  if not acquireGlobalLock():
+    quit("Nimby is already running, delete ~/.nimby/nimbylock to release lock")
+
   case subcommand
     of "": writeHelp()
     of "install": installPackage(argument)
@@ -813,4 +847,6 @@ when isMainModule:
     of "doctor": doctorPackage(argument)
     of "help": writeHelp()
     else:
-      quit "Invalid command"
+      nimbyQuit("Invalid command")
+
+  releaseGlobalLock()
