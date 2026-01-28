@@ -17,19 +17,11 @@ jobs:
       - name: Compile Nimby
         run: nim c -d:release -d:monkey src/nimby.nim
 
-      - name: Clone Metta (with MettaScope)
-        run: git clone --depth 1 https://github.com/Metta-AI/metta.git
-
-      - name: Sync Metta Lock File
-        run: src/nimby sync metta/packages/mettagrid/nim/mettascope/nimby.lock
+      - name: Sync Test Lock File
+        run: src/nimby sync tests/nimby.lock
 
       - name: List Installed Packages
         run: src/nimby list
 
       - name: List Dependency Tree
-        run: src/nimby tree mettagrid/nim/mettascope
-
-      - name: Build MettaScope
-        run: nim c -d:release metta/packages/mettagrid/nim/mettascope/src/mettascope.nim
-
-  
+        run: src/nimby tree
