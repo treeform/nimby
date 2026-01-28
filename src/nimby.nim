@@ -2,7 +2,7 @@
 
 # To make Nimby easy to install, it depends only on system packages.
 import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
-  locks]
+  locks, deques, sets]
 
 when defined(monkey):
   # Monkey mode: Randomly raise errors to test error handling and robustness.
@@ -40,10 +40,8 @@ var
   jobLock: Lock
   retryLock: Lock
 
-  jobQueue: array[100, string]
-  jobQueueStart: int = 0
-  jobQueueEnd: int = 0
-  jobsInProgress: int
+  jobQueue: Deque[string]
+  jobsInProgress: HashSet[string]
 
 initLock(jobLock)
 initLock(printLock)
@@ -312,21 +310,21 @@ proc fetchPackage(argument: string) {.gcsafe.}
 proc addTreeToConfig(path: string) {.gcsafe.}
 
 proc enqueuePackage(packageName: string) =
-  ## Add a package to the job queue.
+  ## Add a package to the job queue. Ensure it is not already queued or in progress.
   withLock(jobLock):
-    if packageName notin jobQueue:
-      jobQueue[jobQueueEnd] = packageName
-      inc jobQueueEnd
+    if packageName notin jobQueue and packageName notin jobsInProgress:
+      jobQueue.addLast(packageName)
     else:
       info &"Package already in queue: {packageName}"
 
 proc popPackage(): string =
   ## Pop a package from the job queue or return an empty string.
+  var pkg: string
   withLock(jobLock):
-    if jobQueueEnd > jobQueueStart:
-      result = jobQueue[jobQueueStart]
-      inc jobQueueStart
-      inc jobsInProgress
+    if jobQueue.len > 0:
+      result = jobQueue.popFirst()
+    if result != "":
+      jobsInProgress.incl(result)
 
 proc readGitHash(packageName: string): string =
   ## Read the Git hash of a package.
@@ -361,7 +359,7 @@ proc worker(id: int) {.thread.} =
     if pkg.len == 0:
       var done: bool
       withLock(jobLock):
-        done = (jobsInProgress == 0)
+        done = (jobsInProgress.len == 0)
       if done:
         break
       sleep(20)
@@ -369,7 +367,7 @@ proc worker(id: int) {.thread.} =
 
     if dirExists(pkg):
       withLock(jobLock):
-        dec jobsInProgress
+        jobsInProgress.excl(pkg)
       info &"Package already exists: {pkg}"
       addTreeToConfig(pkg)
       continue
@@ -377,7 +375,7 @@ proc worker(id: int) {.thread.} =
     fetchPackage(pkg)
 
     withLock(jobLock):
-      dec jobsInProgress
+      jobsInProgress.excl(pkg)
 
 proc addConfigDir(path: string) =
   ## Add a directory to the nim.cfg file.
@@ -537,11 +535,6 @@ proc installPackage(argument: string) =
 
   if dirExists(argument):
     nimbyQuit("Package already installed.")
-
-  # init job queue
-  jobQueueStart = 0
-  jobQueueEnd = 0
-  jobsInProgress = 0
 
   # Ensure the packages index is available before workers start.
   # Enqueue the initial package.
