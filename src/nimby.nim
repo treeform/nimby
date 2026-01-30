@@ -644,10 +644,40 @@ proc doctorPackage(argument: string) =
     let packageName = argument
     checkPackage(packageName)
   else:
+    var lines: seq[string]
+    if fileExists("nim.cfg"):
+      let cfg = readFile("nim.cfg")
+      lines = cfg.split('\n')
+
+    if lines.len == 0 or lines[0] != "# Created by Nimby":
+      nimbyQuit("Working dir is not a Nimby workspace")
+
+    var packageNames: seq[string]
+    for line in lines[1 .. lines.high]:
+      if line.startsWith("--path:\""):
+        var stop = line.find('/')
+        if stop == -1:
+          stop = line.high
+        packageNames.add(line[8 .. stop - 1])
+      else:
+        if line != "":
+          echo "Unexpected line in workspace nim.cfg: \"" & line & '"'
+
+    for packageName in packageNames:
+      checkPackage(packageName)
+
+    var nonworkspaceDirs: seq[string]
     for kind, path in walkDir("."):
       if kind == pcDir:
-        let packageName = path.extractFilename()
-        checkPackage(packageName)
+        let dir = path.extractFilename()
+        if dir notin packageNames:
+          nonworkspaceDirs.add(dir)
+
+    if nonworkspaceDirs.len > 0:
+      echo nonworkspaceDirs.len, " dir(s) not in workspace nim.cfg"
+      if verbose:
+        for dir in nonworkspaceDirs:
+          echo dir, '/'
 
 proc lockPackage(argument: string) =
   ## Generate a lock file for a package.
