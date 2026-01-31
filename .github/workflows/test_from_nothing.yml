@@ -6,14 +6,13 @@ on:
     branches: [ master ]
 jobs:
   build:
-    if: false  # Disabled
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
       NIM_VERSION: '2.2.6'
-      NIMBY_VERSION: '0.1.14'
+      NIMBY_VERSION: '0.1.15'
     steps:
 
       - name: Setup Nim via Nimby (Windows)
@@ -36,11 +35,7 @@ jobs:
         run: |
           set -e
           arch="$(uname -m)"
-          if [ "$arch" = "arm64" ]; then
-            NIMBY_URL="https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-macOS-ARM64"
-          else
-            NIMBY_URL="https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-macOS-X64"
-          fi
+          NIMBY_URL="https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-macOS-ARM64"
           echo "Downloading Nimby for macOS ($arch)..."
           curl -sSL -o nimby "$NIMBY_URL"
           chmod +x nimby
