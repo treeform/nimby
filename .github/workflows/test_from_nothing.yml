@@ -8,7 +8,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
       NIM_VERSION: '2.2.6'
@@ -55,8 +55,14 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "Downloading Nimby for Linux..."
-          curl -sSL -o nimby "https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-Linux-X64"
+          arch="$(uname -m)"
+          if [ "$arch" = "aarch64" ] || [ "$arch" = "arm64" ]; then
+            NIMBY_URL="https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-Linux-ARM64"
+          else
+            NIMBY_URL="https://github.com/treeform/nimby/releases/download/$NIMBY_VERSION/nimby-Linux-X64"
+          fi
+          echo "Downloading Nimby for Linux ($arch)..."
+          curl -sSL -o nimby "$NIMBY_URL"
           chmod +x nimby
           echo "Using Nimby to install Nim $NIM_VERSION..."
           ./nimby use "$NIM_VERSION"
