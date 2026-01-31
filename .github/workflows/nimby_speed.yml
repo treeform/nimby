@@ -7,14 +7,13 @@ on:
     branches: [ master ]
 jobs:
   build:
-    if: false  # Disabled
     strategy:
       matrix:
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - uses: treeform/setup-nim-action@v3
+      - uses: treeform/setup-nim-action@v6
 
       - name: Compile Nimby
         run: nim c -d:release src/nimby.nim

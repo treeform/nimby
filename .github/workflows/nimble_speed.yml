@@ -4,14 +4,13 @@ on:
   workflow_dispatch:
 jobs:
   build:
-    if: false  # Disabled
     strategy:
       matrix:
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - uses: treeform/setup-nim-action@v2
+      - uses: treeform/setup-nim-action@v6
 
       - name: Test Speed
         run: nimble install fidget2

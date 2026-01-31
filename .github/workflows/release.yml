@@ -19,19 +19,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-
-      - name: Setup Nim from Source
-        shell: bash
-        run: |
-          git clone --depth 1 https://github.com/nim-lang/Nim.git
-          cd Nim
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            ./build_all.bat
-          else
-            ./build_all.sh
-          fi
-          echo "Adding Nim bin to PATH..."
-          echo "$PWD/bin" >> "$GITHUB_PATH"
+      - uses: treeform/setup-nim-action@v6
 
       - name: Compute artifact name
         id: meta

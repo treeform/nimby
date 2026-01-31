@@ -761,11 +761,11 @@ proc installNim(nimVersion: string) =
             removeFile(path)
     else:
       when defined(windows):
-        let url = &"https://nim-lang.org/download/nim-{nimVersion}_x64.zip"
+        let url = &"https://github.com/treeform/nimby-nim-builds/releases/download/{nimVersion}/nim-{nimVersion}-Windows-X64.zip"
         print &"Downloading: {url}"
         runSafe(&"curl -sSL {url} -o nim.zip")
         runSafe("powershell -NoProfile -Command Expand-Archive -Force -Path nim.zip -DestinationPath .")
-        let extractedDir = &"nim-{nimVersion}"
+        let extractedDir = &"nim-{nimVersion}-Windows-X64"
         if dirExists(extractedDir):
           for kind, path in walkDir(extractedDir):
             let name = path.extractFilename()
@@ -776,18 +776,21 @@ proc installNim(nimVersion: string) =
           removeDir(extractedDir)
 
       elif defined(macosx):
-        let url = &"https://github.com/treeform/nimbuilds/raw/refs/heads/master/nim-{nimVersion}-macosx_arm64.tar.xz"
+        let url = &"https://github.com/treeform/nimby-nim-builds/releases/download/{nimVersion}/nim-{nimVersion}-macOS-ARM64.tar.gz"
         print &"Downloading: {url}"
-        runSafe(&"curl -sSL {url} -o nim.tar.xz")
+        runSafe(&"curl -sSL {url} -o nim.tar.gz")
         print "Extracting the Nim compiler"
-        runSafe("tar xf nim.tar.xz --strip-components=1")
+        runSafe("tar xf nim.tar.gz --strip-components=1")
 
       elif defined(linux):
-        let url = &"https://nim-lang.org/download/nim-{nimVersion}-linux_x64.tar.xz"
+        when defined(arm64):
+          let url = &"https://github.com/treeform/nimby-nim-builds/releases/download/{nimVersion}/nim-{nimVersion}-Linux-ARM64.tar.gz"
+        else:
+          let url = &"https://github.com/treeform/nimby-nim-builds/releases/download/{nimVersion}/nim-{nimVersion}-Linux-X64.tar.gz"
         print &"Downloading: {url}"
-        runSafe(&"curl -sSL {url} -o nim.tar.xz")
+        runSafe(&"curl -sSL {url} -o nim.tar.gz")
         print "Extracting the Nim compiler"
-        runSafe("tar xf nim.tar.xz --strip-components=1")
+        runSafe("tar xf nim.tar.gz --strip-components=1")
 
       else:
         nimbyQuit "Unsupported platform for Nim installation"
