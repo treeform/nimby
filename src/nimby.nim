@@ -85,6 +85,8 @@ proc acquireGlobalLock(): bool =
   # if it already existed or not. Checking for the existance of a file and then
   # creating it if needed is not atomic.
   let lockPath = getLockDirPath()
+  # Create the parent directory if it doesn't exist.
+  createDir(lockPath.parentDir())
   try:
     let alreadyExists = existsOrCreateDir(lockPath)
     return not alreadyExists

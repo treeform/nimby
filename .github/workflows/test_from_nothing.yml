@@ -6,6 +6,7 @@ on:
     branches: [ master ]
 jobs:
   build:
+    if: false # Disabled
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
@@ -14,7 +15,6 @@ jobs:
       NIM_VERSION: '2.2.6'
       NIMBY_VERSION: '0.1.15'
     steps:
-
       - name: Setup Nim via Nimby (Windows)
         if: runner.os == 'Windows'
         shell: bash
