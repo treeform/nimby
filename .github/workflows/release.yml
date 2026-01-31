@@ -1,19 +1,13 @@
 name: Nimby Release Binaries
 
-# on:
-#   release:
-#     types: [published]
-#   push:
-#     tags:
-#       - "*"
-#   workflow_dispatch:
-
 on:
+  release:
+    types: [published]
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-    
+    tags:
+      - "*"
+  workflow_dispatch:
+
 permissions:
   contents: write
 
