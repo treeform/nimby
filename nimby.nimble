@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.14"
+version       = "0.1.16"
 author        = "Andre von Houck"
 description   = "Nimby helps you manage many nim packages."
 license       = "MIT"
