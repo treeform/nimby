@@ -86,7 +86,7 @@ proc acquireGlobalLock(): bool =
   # creating it if needed is not atomic.
   let lockPath = getLockDirPath()
   # Create the parent directory if it doesn't exist.
-  createDir(lockPath.parentDir())
+  createDir(getGlobalNimbyDir())
   try:
     let alreadyExists = existsOrCreateDir(lockPath)
     return not alreadyExists
