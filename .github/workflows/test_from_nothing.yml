@@ -60,6 +60,7 @@ jobs:
           echo "Downloading Nimby for Linux ($arch)..."
           curl -sSL -o nimby "$NIMBY_URL"
           chmod +x nimby
+          ls -la ~/.nimby/
           echo "Using Nimby to install Nim $NIM_VERSION..."
           ./nimby use "$NIM_VERSION"
           cp nimby $HOME/.nimby/nim/bin/nimby
