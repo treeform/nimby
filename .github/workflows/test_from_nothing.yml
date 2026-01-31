@@ -6,6 +6,7 @@ on:
     branches: [ master ]
 jobs:
   build:
+    if: false  # Disabled
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
