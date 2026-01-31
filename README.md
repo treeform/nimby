@@ -98,6 +98,12 @@ curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.14/nimb
 chmod +x nimby
 ```
 
+### Linux ARM64
+```
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.14/nimby-Linux-ARM64
+chmod +x nimby
+```
+
 ### Windows
 ```
 curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/0.1.14/nimby-Windows-X64.exe
