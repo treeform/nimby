@@ -6,14 +6,13 @@ on:
     branches: [ master ]
 jobs:
   build:
-    if: false # Disabled
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
       NIM_VERSION: '2.2.6'
-      NIMBY_VERSION: '0.1.15'
+      NIMBY_VERSION: '0.1.16'
     steps:
       - name: Setup Nim via Nimby (Windows)
         if: runner.os == 'Windows'
@@ -60,7 +59,6 @@ jobs:
           echo "Downloading Nimby for Linux ($arch)..."
           curl -sSL -o nimby "$NIMBY_URL"
           chmod +x nimby
-          ls -la ~/.nimby/
           echo "Using Nimby to install Nim $NIM_VERSION..."
           ./nimby use "$NIM_VERSION"
           cp nimby $HOME/.nimby/nim/bin/nimby
