@@ -20,9 +20,9 @@ jobs:
           git clone --depth 1 https://github.com/nim-lang/Nim.git
           cd Nim
           if [ "${{ runner.os }}" = "Windows" ]; then
-            build_all.bat
+            ./build_all.bat
           else
-            build_all.sh
+            ./build_all.sh
           fi
           echo "Adding Nim bin to PATH..."
           echo "$PWD/bin" >> "$GITHUB_PATH"
