@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       NIM_VERSION: '2.2.6'
-      NIMBY_VERSION: '0.1.17'
+      NIMBY_VERSION: '0.1.18'
     steps:
       - name: Setup Nim via Nimby (Windows)
         if: runner.os == 'Windows'
