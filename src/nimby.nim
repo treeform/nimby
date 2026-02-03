@@ -862,19 +862,20 @@ when isMainModule:
   if not acquireGlobalLock():
     quit("Nimby is already running, delete ~/.nimby/nimbylock to release lock")
 
-  case subcommand
-    of "": writeHelp()
-    of "install": installPackage(argument)
-    of "sync": syncPackage(argument)
-    of "update": updatePackage(argument)
-    of "remove", "uninstall": removePackage(argument)
-    of "list": listPackages(argument)
-    of "tree": treePackages(argument)
-    of "lock": lockPackage(argument)
-    of "use": installNim(argument)
-    of "doctor": doctorPackage(argument)
-    of "help": writeHelp()
-    else:
-      nimbyQuit("Invalid command")
-
-  releaseGlobalLock()
+  try:
+    case subcommand
+      of "": writeHelp()
+      of "install": installPackage(argument)
+      of "sync": syncPackage(argument)
+      of "update": updatePackage(argument)
+      of "remove", "uninstall": removePackage(argument)
+      of "list": listPackages(argument)
+      of "tree": treePackages(argument)
+      of "lock": lockPackage(argument)
+      of "use": installNim(argument)
+      of "doctor": doctorPackage(argument)
+      of "help": writeHelp()
+      else:
+        nimbyQuit("Invalid command")
+  finally:
+    releaseGlobalLock()
