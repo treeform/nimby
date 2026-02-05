@@ -6,7 +6,6 @@ on:
     branches: [ master ]
 jobs:
   build:
-    if: false  # Disabled until manylinux builds are ready
     strategy:
       matrix:
         include:
