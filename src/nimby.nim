@@ -825,6 +825,7 @@ proc installNim(nimVersion: string) =
       print &"fish_add_path {binPath}              # fish"
 
 when isMainModule:
+  writeVersion()
 
   var subcommand, argument: string
   var p = initOptParser()
@@ -841,7 +842,6 @@ when isMainModule:
         writeHelp()
         quit(0)
       of "version", "v":
-        writeVersion()
         quit(0)
       of "verbose", "V":
         verbose = true
