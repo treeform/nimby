@@ -8,12 +8,25 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-22.04-arm, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            container: quay.io/pypa/manylinux_2_34_x86_64
+          - os: ubuntu-22.04-arm
+            container: quay.io/pypa/manylinux_2_34_aarch64
+          - os: macos-latest
+            container: null
+          - os: windows-latest
+            container: null
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     env:
       NIM_VERSION: '2.2.6'
       NIMBY_VERSION: '0.1.17'
     steps:
+      - name: Install build dependencies (Linux container)
+        if: matrix.container
+        run: yum install -y git gcc make which tar gzip curl
+
       - name: Setup Nim via Nimby (Windows)
         if: runner.os == 'Windows'
         shell: bash
