@@ -195,7 +195,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Print the version of Nimby.
-  print "Nimby 0.1.18"
+  print "Nimby 0.1.19"
 
 proc writeHelp() =
   ## Show the help message.
