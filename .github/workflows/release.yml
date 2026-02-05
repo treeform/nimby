@@ -15,9 +15,22 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-22.04-arm, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            container: quay.io/pypa/manylinux_2_34_x86_64
+          - os: ubuntu-22.04-arm
+            container: quay.io/pypa/manylinux_2_34_aarch64
+          - os: macos-latest
+            container: null
+          - os: windows-latest
+            container: null
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     steps:
+      - name: Install build dependencies (Linux container)
+        if: matrix.container
+        run: yum install -y git gcc make which tar gzip curl
+
       - uses: actions/checkout@v3
       - uses: treeform/setup-nim-action@v6
 
