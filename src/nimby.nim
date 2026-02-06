@@ -11,7 +11,7 @@ when defined(monkey):
   randomize()
 
 const
-  WorkerCount = 32
+  WorkerCount = 4
   lockDir = "nimbylock"
 
 type
