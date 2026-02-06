@@ -285,17 +285,15 @@ proc getNimbleFile(name: string): NimbleFile =
 proc getGlobalPackages(): JsonNode =
   ## Fetch and return the global packages index (packages.json).
   let globalPackagesDir = getGlobalPackagesDir() / "packages"
-  if not updatedGlobalPackages:
-    if not fileExists(globalPackagesDir / "packages.json"):
-      info "Packages.json not found, cloning..."
-      withLock(jobLock):
-        if not fileExists(globalPackagesDir / "packages.json") and not updatedGlobalPackages:
-          runOnce(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
+  withLock(jobLock):
+    if not updatedGlobalPackages:
+      if not fileExists(globalPackagesDir / "packages.json"):
+        info "Packages.json not found, cloning..."
+        runOnce(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
         updatedGlobalPackages = true
-    else:
-      info "Packages.json found, pulling..."
-      withLock(jobLock):
+      else:
         if not updatedGlobalPackages:
+          info "Packages.json found, pulling..."
           runSafe(&"git -C {globalPackagesDir} pull")
         updatedGlobalPackages = true
 
