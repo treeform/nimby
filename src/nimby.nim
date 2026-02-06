@@ -11,7 +11,7 @@ when defined(monkey):
   randomize()
 
 const
-  WorkerCount = 32
+  WorkerCount = 4
   lockDir = "nimbylock"
 
 type
@@ -195,7 +195,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Print the version of Nimby.
-  print "Nimby 0.1.20"
+  print "Nimby 0.1.21"
 
 proc writeHelp() =
   ## Show the help message.
@@ -285,17 +285,15 @@ proc getNimbleFile(name: string): NimbleFile =
 proc getGlobalPackages(): JsonNode =
   ## Fetch and return the global packages index (packages.json).
   let globalPackagesDir = getGlobalPackagesDir() / "packages"
-  if not updatedGlobalPackages:
-    if not fileExists(globalPackagesDir / "packages.json"):
-      info "Packages.json not found, cloning..."
-      withLock(jobLock):
-        if not fileExists(globalPackagesDir / "packages.json") and not updatedGlobalPackages:
-          runOnce(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
+  withLock(jobLock):
+    if not updatedGlobalPackages:
+      if not fileExists(globalPackagesDir / "packages.json"):
+        info "Packages.json not found, cloning..."
+        runOnce(&"git clone https://github.com/nim-lang/packages.git --depth 1 {globalPackagesDir}")
         updatedGlobalPackages = true
-    else:
-      info "Packages.json found, pulling..."
-      withLock(jobLock):
+      else:
         if not updatedGlobalPackages:
+          info "Packages.json found, pulling..."
           runSafe(&"git -C {globalPackagesDir} pull")
         updatedGlobalPackages = true
 
