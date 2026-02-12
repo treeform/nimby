@@ -42,6 +42,7 @@ var
 
   jobQueue: Deque[string]
   jobsInProgress: HashSet[string]
+  jobsComplete: HashSet[string]
 
 initLock(jobLock)
 initLock(printLock)
@@ -195,7 +196,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Print the version of Nimby.
-  print "Nimby 0.1.21"
+  print "Nimby 0.1.22"
 
 proc writeHelp() =
   ## Show the help message.
@@ -312,14 +313,13 @@ proc addTreeToConfig(path: string) {.gcsafe.}
 proc enqueuePackage(packageName: string) =
   ## Add a package to the job queue. Ensure it is not already queued or in progress.
   withLock(jobLock):
-    if packageName notin jobQueue and packageName notin jobsInProgress:
+    if packageName notin jobQueue and packageName notin jobsInProgress and packageName notin jobsComplete:
       jobQueue.addLast(packageName)
     else:
       info &"Package already in queue: {packageName}"
 
 proc popPackage(): string =
   ## Pop a package from the job queue or return an empty string.
-  var pkg: string
   withLock(jobLock):
     if jobQueue.len > 0:
       result = jobQueue.popFirst()
@@ -366,16 +366,18 @@ proc worker(id: int) {.thread.} =
       continue
 
     if dirExists(pkg):
-      withLock(jobLock):
-        jobsInProgress.excl(pkg)
       info &"Package already exists: {pkg}"
       addTreeToConfig(pkg)
+      withLock(jobLock):
+        jobsInProgress.excl(pkg)
+        jobsComplete.incl(pkg)
       continue
 
     fetchPackage(pkg)
 
     withLock(jobLock):
       jobsInProgress.excl(pkg)
+      jobsComplete.incl(pkg)
 
 proc addConfigDir(path: string) =
   ## Add a directory to the nim.cfg file.
@@ -543,8 +545,7 @@ proc installPackage(argument: string) =
   var threads: array[WorkerCount, Thread[int]]
   for i in 0 ..< WorkerCount:
     createThread(threads[i], worker, i)
-  for i in 0 ..< WorkerCount:
-    joinThread(threads[i])
+  joinThreads(threads)
 
   timeEnd()
   nimbyQuit(0)
@@ -716,8 +717,7 @@ proc syncPackage(path: string) =
   var threads: array[WorkerCount, Thread[int]]
   for i in 0 ..< WorkerCount:
     createThread(threads[i], worker, i)
-  for i in 0 ..< WorkerCount:
-    joinThread(threads[i])
+  joinThreads(threads)
 
   timeEnd()
   nimbyQuit(0)
