@@ -88,25 +88,25 @@ This works perfectly for CI workflows, deployments, or any situation where youâ€
 
 ### macOS ARM64
 ```
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.21/nimby-macOS-ARM64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.23/nimby-macOS-ARM64
 chmod +x nimby
 ```
 
 ### Linux X64
 ```
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.21/nimby-Linux-X64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.23/nimby-Linux-X64
 chmod +x nimby
 ```
 
 ### Linux ARM64
 ```
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.21/nimby-Linux-ARM64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.23/nimby-Linux-ARM64
 chmod +x nimby
 ```
 
 ### Windows
 ```
-curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/0.1.21/nimby-Windows-X64.exe
+curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/0.1.23/nimby-Windows-X64.exe
 ```
 
 
