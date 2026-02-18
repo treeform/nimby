@@ -472,7 +472,7 @@ proc fetchPackage(argument: string) =
     if not dirExists(packagePath):
       # Clone the package from the URL at the given Git hash.
       cloneRepo(packageUrl, packagePath)
-      runOnce(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+      runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
       runOnce(&"git -C {packagePath} checkout {packageGitHash}")
       print &"Installed package: {packageName}"
     else:
@@ -480,7 +480,7 @@ proc fetchPackage(argument: string) =
         # Check whether the package is at the given Git hash.
         let gitHash = readGitHash(packageName)
         if gitHash != packageGitHash:
-          runOnce(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+          runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
           runOnce(&"git -C {packagePath} checkout {packageGitHash}")
           print &"Updated package: {packageName}"
         else:
