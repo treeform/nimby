@@ -365,14 +365,6 @@ proc worker(id: int) {.thread.} =
       sleep(20)
       continue
 
-    if dirExists(pkg):
-      info &"Package already exists: {pkg}"
-      addTreeToConfig(pkg)
-      withLock(jobLock):
-        jobsInProgress.excl(pkg)
-        jobsComplete.incl(pkg)
-      continue
-
     fetchPackage(pkg)
 
     withLock(jobLock):
