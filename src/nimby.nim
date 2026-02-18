@@ -433,8 +433,8 @@ proc cloneRepo(url, path: string) =
     print "Error cloning " & url
     print getCurrentExceptionMsg()
     removeDir(path)
-    sleep(100)
     print "Retrying clone " & url
+    sleep(100)
     runOnce(&"git clone --depth 1 {url} {path}")
 
 proc fetchPackage(argument: string) =
