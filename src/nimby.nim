@@ -420,6 +420,12 @@ proc addTreeToConfig(path: string) =
   for dependency in nimbleFile.dependencies:
     enqueuePackage(dependency.name)
 
+proc isCleanRepo(path: string): bool =
+  let p = execCmdEx(&"git -C {path} status --porcelain --untracked-files=no")
+  if p.exitCode != 0:
+    raise newException(NimbyError, &"error running git status on `{path}`, exit code: {p.exitCode}")
+  return p.output.strip() == ""
+
 proc cloneRepo(url, path: string) =
   try:
     runOnce(&"git clone --depth 1 {url} {path}")
@@ -470,14 +476,17 @@ proc fetchPackage(argument: string) =
       runOnce(&"git -C {packagePath} checkout {packageGitHash}")
       print &"Installed package: {packageName}"
     else:
-      # Check whether the package is at the given Git hash.
-      let gitHash = readGitHash(packageName)
-      if gitHash != packageGitHash:
-        runOnce(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
-        runOnce(&"git -C {packagePath} checkout {packageGitHash}")
-        print &"Updated package: {packageName}"
+      if isCleanRepo(packagePath):
+        # Check whether the package is at the given Git hash.
+        let gitHash = readGitHash(packageName)
+        if gitHash != packageGitHash:
+          runOnce(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+          runOnce(&"git -C {packagePath} checkout {packageGitHash}")
+          print &"Updated package: {packageName}"
+        else:
+          info &"Package {packageName} has the correct hash."
       else:
-        info &"Package {packageName} has the correct hash."
+        nimbyQuit(&"Package {packageName} repo exists and has changes.")
     addConfigPackage(packageName)
 
   elif isGitUrl(argument):
