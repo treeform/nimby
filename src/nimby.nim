@@ -427,18 +427,20 @@ proc isCleanRepo(path: string): bool =
   return p.output.strip() == ""
 
 proc cloneRepo(url, path: string, nocheckout = false) =
-  try:
+  let gitCmd =
     if nocheckout:
-      runOnce(&"git clone --no-checkout --depth 1 {url} {path}")
+      &"git clone --no-checkout --depth 1 {url} {path}"
     else:
-      runOnce(&"git clone --depth 1 {url} {path}")
+      &"git clone --depth 1 {url} {path}"
+  try:
+    runOnce(gitCmd)
   except:
     print "Error cloning " & url
     print getCurrentExceptionMsg()
     removeDir(path)
     print "Retrying clone " & url
     sleep(100)
-    runOnce(&"git clone --depth 1 {url} {path}")
+    runOnce(gitCmd)
 
 proc fetchPackage(argument: string) =
   ## Main recursive function to fetch a package and its dependencies.
