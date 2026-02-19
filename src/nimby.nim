@@ -421,7 +421,7 @@ proc addTreeToConfig(path: string) =
     enqueuePackage(dependency.name)
 
 proc isCleanRepo(path: string): bool =
-  let p = execCmdEx(&"git -C {path} status --porcelain --untracked-files=no")
+  let p = execCmdEx(&"git -C {path} status --porcelain")
   if p.exitCode != 0:
     raise newException(NimbyError, &"error running git status on `{path}`, exit code: {p.exitCode}")
   return p.output.strip() == ""
