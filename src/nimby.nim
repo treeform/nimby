@@ -196,7 +196,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Print the version of Nimby.
-  print "Nimby 0.1.23"
+  print "Nimby 0.1.24"
 
 proc writeHelp() =
   ## Show the help message.
@@ -365,14 +365,6 @@ proc worker(id: int) {.thread.} =
       sleep(20)
       continue
 
-    if dirExists(pkg):
-      info &"Package already exists: {pkg}"
-      addTreeToConfig(pkg)
-      withLock(jobLock):
-        jobsInProgress.excl(pkg)
-        jobsComplete.incl(pkg)
-      continue
-
     fetchPackage(pkg)
 
     withLock(jobLock):
@@ -428,6 +420,28 @@ proc addTreeToConfig(path: string) =
   for dependency in nimbleFile.dependencies:
     enqueuePackage(dependency.name)
 
+proc isCleanRepo(path: string): bool =
+  let p = execCmdEx(&"git -C {path} status --porcelain")
+  if p.exitCode != 0:
+    raise newException(NimbyError, &"error running git status on `{path}`, exit code: {p.exitCode}")
+  return p.output.strip() == ""
+
+proc cloneRepo(url, path: string, nocheckout = false) =
+  let gitCmd =
+    if nocheckout:
+      &"git clone --no-checkout --depth 1 {url} {path}"
+    else:
+      &"git clone --depth 1 {url} {path}"
+  try:
+    runOnce(gitCmd)
+  except:
+    print "Error cloning " & url
+    print getCurrentExceptionMsg()
+    removeDir(path)
+    print "Retrying clone " & url
+    sleep(100)
+    runOnce(gitCmd)
+
 proc fetchPackage(argument: string) =
   ## Main recursive function to fetch a package and its dependencies.
   if argument.endsWith(".nimble"):
@@ -462,19 +476,22 @@ proc fetchPackage(argument: string) =
 
     if not dirExists(packagePath):
       # Clone the package from the URL at the given Git hash.
-      runOnce(&"git clone --no-checkout --depth 1 {packageUrl} {packagePath}")
-      runOnce(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+      cloneRepo(packageUrl, packagePath, nocheckout = true)
+      runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
       runOnce(&"git -C {packagePath} checkout {packageGitHash}")
       print &"Installed package: {packageName}"
     else:
-      # Check whether the package is at the given Git hash.
-      let gitHash = readGitHash(packageName)
-      if gitHash != packageGitHash:
-        runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
-        runSafe(&"git -C {packagePath} checkout {packageGitHash}")
-        print &"Updated package: {packageName}"
+      if isCleanRepo(packagePath):
+        # Check whether the package is at the given Git hash.
+        let gitHash = readGitHash(packageName)
+        if gitHash != packageGitHash:
+          runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
+          runOnce(&"git -C {packagePath} checkout {packageGitHash}")
+          print &"Updated package: {packageName}"
+        else:
+          info &"Package {packageName} has the correct hash."
       else:
-        info &"Package {packageName} has the correct hash."
+        nimbyQuit(&"Package {packageName} repo exists and has changes.")
     addConfigPackage(packageName)
 
   elif isGitUrl(argument):
@@ -493,10 +510,11 @@ proc fetchPackage(argument: string) =
 
     if dirExists(path):
       info &"Package already exists: {path}"
+      addTreeToConfig(path)
     else:
-      runOnce(&"git clone --depth 1 {url} {path}")
+      cloneRepo(url, path)
       if fragment != "":
-        runSafe(&"git -C {path} checkout {fragment}")
+        runOnce(&"git -C {path} checkout {fragment}")
     addConfigPackage(packageName)
     print &"Installed package: {packageName}"
     fetchDeps(packageName)
@@ -522,8 +540,9 @@ proc fetchPackage(argument: string) =
       info &"Cloning package: {argument} to {path}"
       if dirExists(path):
         info &"Package already exists: {path}"
+        addTreeToConfig(path)
       else:
-        runOnce(&"git clone --depth 1 {url} {path}")
+        cloneRepo(url, path)
       addConfigPackage(name)
       print &"Installed package: {name}"
       fetchDeps(name)
