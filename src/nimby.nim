@@ -426,9 +426,12 @@ proc isCleanRepo(path: string): bool =
     raise newException(NimbyError, &"error running git status on `{path}`, exit code: {p.exitCode}")
   return p.output.strip() == ""
 
-proc cloneRepo(url, path: string) =
+proc cloneRepo(url, path: string, nocheckout = false) =
   try:
-    runOnce(&"git clone --depth 1 {url} {path}")
+    if nocheckout:
+      runOnce(&"git clone --no-checkout --depth 1 {url} {path}")
+    else:
+      runOnce(&"git clone --depth 1 {url} {path}")
   except:
     print "Error cloning " & url
     print getCurrentExceptionMsg()
@@ -471,7 +474,7 @@ proc fetchPackage(argument: string) =
 
     if not dirExists(packagePath):
       # Clone the package from the URL at the given Git hash.
-      cloneRepo(packageUrl, packagePath)
+      cloneRepo(packageUrl, packagePath, nocheckout = true)
       runSafe(&"git -C {packagePath} fetch --depth 1 origin {packageGitHash}")
       runOnce(&"git -C {packagePath} checkout {packageGitHash}")
       print &"Installed package: {packageName}"
