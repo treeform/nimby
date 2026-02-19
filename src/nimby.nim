@@ -505,6 +505,7 @@ proc fetchPackage(argument: string) =
 
     if dirExists(path):
       info &"Package already exists: {path}"
+      addTreeToConfig(path)
     else:
       cloneRepo(url, path)
       if fragment != "":
@@ -534,6 +535,7 @@ proc fetchPackage(argument: string) =
       info &"Cloning package: {argument} to {path}"
       if dirExists(path):
         info &"Package already exists: {path}"
+        addTreeToConfig(path)
       else:
         cloneRepo(url, path)
       addConfigPackage(name)
