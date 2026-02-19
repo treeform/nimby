@@ -143,24 +143,24 @@ proc writeFileSafe(fileName: string, content: string) =
           sleep(100 * trying)
       raise newException(NimbyError, "error writing file `" & fileName & "`: " & getCurrentExceptionMsg())
 
-proc runOnce(command: string) =
+proc runOnce(command: string): string {.discardable.} =
+  # Returns stdout
   let exeName = command.split(" ")[0]
   let args = command.split(" ")[1..^1]
   try:
-    var options = {poUsePath}
-    if verbose:
-      # Print the command output to the console.
-      options.incl(poStdErrToStdOut)
-      options.incl(poParentStreams)
-    if verbose:
+    let
+      p = startProcess(exeName, args=args, options={poUsePath})
+      exitCode = p.waitForExit(-1)
+      outstr = p.peekableOutputStream().readAll()
+      errstr = p.peekableErrorStream().readAll()
+    if exitCode != 0:
       print "> " & command
-    let p = startProcess(exeName, args=args, options=options)
-    if p.waitForExit(-1) != 0:
-      if not verbose:
-        print "> " & command
-      print p.peekableOutputStream().readAll()
-      print p.peekableErrorStream().readAll()
+      print outstr
+      print errstr
       raise newException(NimbyError, "error code: " & $p.peekExitCode())
+    if errstr != "":
+      print errstr
+    result = outstr.strip()
     p.close()
   except:
     raise newException(NimbyError, "error running command `" & command & "`: " & $getCurrentExceptionMsg())
@@ -196,7 +196,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Print the version of Nimby.
-  print "Nimby 0.1.25"
+  print "Nimby 0.1.26"
 
 proc writeHelp() =
   ## Show the help message.
@@ -331,9 +331,7 @@ proc readGitHash(packageName: string): string =
   let globalPath = getGlobalPackagesDir() / packageName
   for path in [packageName, globalPath]:
     if dirExists(path):
-      let p = execCmdEx(&"git -C {path} rev-parse HEAD")
-      if p.exitCode == 0:
-        return p.output.strip()
+      return runOnce(&"git -C {path} rev-parse HEAD")
   return ""
 
 proc readPackageUrl(packageName: string): string =
@@ -421,10 +419,8 @@ proc addTreeToConfig(path: string) =
     enqueuePackage(dependency.name)
 
 proc isCleanRepo(path: string): bool =
-  let p = execCmdEx(&"git -C {path} status --porcelain")
-  if p.exitCode != 0:
-    raise newException(NimbyError, &"error running git status on `{path}`, exit code: {p.exitCode}")
-  return p.output.strip() == ""
+  let outstr = runOnce(&"git -C {path} status --porcelain")
+  return outstr == ""
 
 proc cloneRepo(url, path: string, nocheckout = false) =
   let gitCmd =
