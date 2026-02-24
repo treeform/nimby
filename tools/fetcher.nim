@@ -154,7 +154,7 @@ proc fetchStars(owner: string, name: string): int =
     return 0
 
 proc fetchPackage(package: GlobalPackage, verbose: bool = false) =
-  
+
   if verbose: echo "Fetching: ", package.url
 
   if package.`method` != "git":
@@ -193,7 +193,7 @@ proc fetchPackage(package: GlobalPackage, verbose: bool = false) =
   writeFile(&"packages/{name}/stars.txt", $stars)
   echo "  Stars: ", stars
   if stars < 1:
-    if verbose: echo "  Skipping: ", package.name 
+    if verbose: echo "  Skipping: ", package.name
     return
 
   echo "Fetching: ", package.url
@@ -206,4 +206,3 @@ for i, package in packages:
   fetchPackage(package, verbose = false)
   if i mod 10 == 0:
     echo i, "/", packages.len
-
