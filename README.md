@@ -1,4 +1,3 @@
-
 ![Nimby Logo](docs/nimbyLogo.png)
 
 # Nimby

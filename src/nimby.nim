@@ -1,5 +1,3 @@
-
-
 # To make Nimby easy to install, it depends only on system packages.
 import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
   locks, deques, sets]

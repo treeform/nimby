@@ -1,4 +1,3 @@
-
 name: Test install Nim form Source
 on:
   push:
@@ -31,7 +30,7 @@ jobs:
       - uses: treeform/setup-nim-action@v6
 
       - name: Compile Nimby
-        shell: bash 
+        shell: bash
         run: nim c -d:release src/nimby.nim
 
       - name: Install Nim Compiler
