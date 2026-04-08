@@ -75,17 +75,26 @@ doAssert isGitUrl("git@github.com:treeform/silky.git") == true, "SSH URL should 
 doAssert isGitUrl("silky") == false, "Package name should not be detected as URL"
 doAssert isGitUrl("") == false, "Empty string should not be detected as URL"
 
-echo "Test 7: extractPackageNameFromUrl extracts package names correctly"
-doAssert extractPackageNameFromUrl("https://github.com/treeform/silky") == "silky", "HTTPS URL without .git"
-doAssert extractPackageNameFromUrl("https://github.com/treeform/shady.git") == "shady", "HTTPS URL with .git"
-doAssert extractPackageNameFromUrl("https://github.com/treeform/shady.git#head") == "shady", "HTTPS URL with fragment"
-doAssert extractPackageNameFromUrl("git@github.com:treeform/vmath.git") == "vmath", "SSH URL"
-doAssert extractPackageNameFromUrl("https://gitea.example.com/user/my-package") == "my-package", "Custom domain"
+echo "Test 7: parseGitUrl parses package name, URL, and fragment correctly"
+var parsed = parseGitUrl("https://github.com/treeform/silky")
+doAssert parsed == ("silky", "https://github.com/treeform/silky", ""), "HTTPS URL without .git"
 
-echo "Test 8: extractUrlFragment extracts fragments correctly"
-doAssert extractUrlFragment("https://github.com/treeform/shady.git#head") == "head", "Fragment after #"
-doAssert extractUrlFragment("https://github.com/treeform/shady.git#v1.0.0") == "v1.0.0", "Version fragment"
-doAssert extractUrlFragment("https://github.com/treeform/shady.git") == "", "No fragment"
-doAssert extractUrlFragment("https://github.com/treeform/shady.git#") == "", "Empty fragment"
+parsed = parseGitUrl("https://github.com/treeform/shady.git")
+doAssert parsed == ("shady", "https://github.com/treeform/shady.git", ""), "HTTPS URL with .git"
+
+parsed = parseGitUrl("https://github.com/treeform/shady.git#head")
+doAssert parsed == ("shady", "https://github.com/treeform/shady.git", "head"), "HTTPS URL with fragment"
+
+parsed = parseGitUrl("git@github.com:treeform/vmath.git")
+doAssert parsed == ("vmath", "git@github.com:treeform/vmath.git", ""), "SSH URL"
+
+parsed = parseGitUrl("https://gitea.example.com/user/my-package")
+doAssert parsed == ("my-package", "https://gitea.example.com/user/my-package", ""), "Custom domain"
+
+parsed = parseGitUrl("https://github.com/treeform/shady.git#v1.0.0")
+doAssert parsed == ("shady", "https://github.com/treeform/shady.git", "v1.0.0"), "Version fragment"
+
+parsed = parseGitUrl("https://github.com/treeform/shady.git#")
+doAssert parsed == ("shady", "https://github.com/treeform/shady.git", ""), "Empty fragment"
 
 echo "All parseNimbleFile and URL helper tests passed."
