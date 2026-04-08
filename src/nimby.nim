@@ -219,19 +219,15 @@ proc isGitUrl*(s: string): bool =
   ## Check if a string is a git URL.
   s.startsWith("http://") or s.startsWith("https://") or s.startsWith("git@")
 
-proc extractPackageNameFromUrl*(url: string): string =
-  ## Extract package name from a git URL.
-  var cleanUrl = url
-  if "#" in cleanUrl:
-    cleanUrl = cleanUrl.split("#")[0]
+proc parseGitUrl*(raw: string): tuple[packageName: string, url: string, fragment: string] =
+  ## Parse a git URL into its package name, clean URL, and fragment (branch/tag/commit).
+  let parts = raw.split("#", maxsplit = 1)
+  result.url = parts[0]
+  result.fragment = if parts.len > 1 and parts[1] != "": parts[1] else: ""
+  var cleanUrl = result.url
   if cleanUrl.endsWith(".git"):
     cleanUrl = cleanUrl[0..^5]
-  result = cleanUrl.split("/")[^1]
-
-proc extractUrlFragment*(url: string): string =
-  ## Extract fragment (branch/tag/commit) from URL.
-  if "#" in url:
-    result = url.split("#")[1]
+  result.packageName = cleanUrl.split("/")[^1]
 
 proc parseNimbleFile*(fileName: string): NimbleFile =
   ## Parse the .nimble file and return a NimbleFile object.
@@ -420,12 +416,13 @@ proc isCleanRepo(path: string): bool =
   let outstr = runOnce(&"git -C {path} status --porcelain")
   return outstr == ""
 
-proc cloneRepo(url, path: string, nocheckout = false) =
+proc cloneRepo(url, path: string, nocheckout = false, branch = "") =
+  let branchFlag = if branch != "": &" --branch {branch}" else: ""
   let gitCmd =
     if nocheckout:
-      &"git clone --no-checkout --depth 1 {url} {path}"
+      &"git clone --no-checkout --depth 1{branchFlag} {url} {path}"
     else:
-      &"git clone --depth 1 {url} {path}"
+      &"git clone --depth 1{branchFlag} {url} {path}"
   try:
     runOnce(gitCmd)
   except:
@@ -491,9 +488,7 @@ proc fetchPackage(argument: string) =
   elif isGitUrl(argument):
 
     # Install directly from git URL.
-    let url = argument
-    let packageName = extractPackageNameFromUrl(url)
-    let fragment = extractUrlFragment(url)
+    let (packageName, url, fragment) = parseGitUrl(argument)
     let path =
       if global:
         getGlobalPackagesDir() / packageName
@@ -506,9 +501,7 @@ proc fetchPackage(argument: string) =
       info &"Package already exists: {path}"
       addTreeToConfig(path)
     else:
-      cloneRepo(url, path)
-      if fragment != "":
-        runOnce(&"git -C {path} checkout {fragment}")
+      cloneRepo(url, path, branch = fragment)
     addConfigPackage(packageName)
     print &"Installed package: {packageName}"
     fetchDeps(packageName)
