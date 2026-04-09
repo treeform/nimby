@@ -17,6 +17,7 @@ type
 
   Dependency* = object
     name*: string
+    url*: string
     op*: string
     version*: string
 
@@ -240,11 +241,11 @@ proc parseNimbleFile*(fileName: string): NimbleFile =
       result.srcDir = line.split(" ")[^1].strip().replace("\"", "")
     elif line.startsWith("requires"):
       var i = 9
-      var name, op, version = ""
+      var dependency, op, version = ""
       while i < line.len and line[i] in [' ', '"']:
         inc i
       while i < line.len and line[i] notin ['=', '<', '>', '~', '^', ' ', '"']:
-        name.add(line[i])
+        dependency.add(line[i])
         inc i
       while i < line.len and line[i] in [' ']:
         inc i
@@ -256,12 +257,14 @@ proc parseNimbleFile*(fileName: string): NimbleFile =
       while i < line.len and line[i] notin ['"']:
         version.add(line[i])
         inc i
+      let parsed = if isGitUrl(dependency): parseGitUrl(dependency) else: (packageName: dependency, url: "", fragment: "")
       let dep = Dependency(
-        name: name,
+        name: parsed.packageName,
+        url: parsed.url,
         op: op,
         version: version
       )
-      if name == "nim":
+      if dep.name == "nim":
         result.nimDependency = dep
       else:
         result.dependencies.add(dep)
@@ -694,10 +697,19 @@ proc lockPackage(argument: string) =
       continue
     var listedDeps: seq[string]
     proc walkDeps(packageName: string) =
-      for dependency in getNimbleFile(packageName).dependencies:
+      let nimbleFile = getNimbleFile(packageName)
+      if nimbleFile == nil:
+        return
+
+      for dependency in nimbleFile.dependencies:
         if dependency.name notin listedDeps:
           let url = readPackageUrl(dependency.name)
-          let version = getNimbleFile(dependency.name).version
+
+          let nimbleFile = getNimbleFile(dependency.name)
+          if nimbleFile == nil:
+            continue
+
+          let version = nimbleFile.version
           let gitHash = readGitHash(dependency.name)
           print &"{dependency.name} {version} {url} {gitHash}"
           listedDeps.add(dependency.name)
