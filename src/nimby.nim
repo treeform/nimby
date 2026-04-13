@@ -14,6 +14,7 @@ const
 
 type
   NimbyError* = object of CatchableError
+  NimbleFileNotFound* = object of NimbyError
 
   Dependency* = object
     name*: string
@@ -279,6 +280,9 @@ proc getNimbleFile(name: string): NimbleFile =
     return parseNimbleFile(localPath)
   if fileExists(globalPath):
     return parseNimbleFile(globalPath)
+  let errorMessage = &"Nimble file not found for package '{name}', searched paths:\n"
+  let pathsMessage = &"  local:  {localPath}\n  global: {globalPath}"
+  raise newException(NimbleFileNotFound, errorMessage & pathsMessage)
 
 proc getGlobalPackages(): JsonNode =
   ## Fetch and return the global packages index (packages.json).
@@ -336,16 +340,17 @@ proc readPackageUrl(packageName: string): string =
   let packages = getGlobalPackages()
   for p in packages:
     if p["name"].getStr() == packageName:
-      return p["url"].getStr()
+      return p["url"].getStr().strip(chars = {'/'}, leading = false)
 
 proc fetchDeps(packageName: string) =
   ## Fetch the dependencies of a package.
-  let package = getNimbleFile(packageName)
-  if package == nil:
-    nimbyQuit(&"Can't fetch deps for: Nimble file not found: {packageName}")
-  for dep in package.dependencies:
-    info &"Dependency: {dep}"
-    enqueuePackage(dep.name)
+  try:
+    for dep in getNimbleFile(packageName).dependencies:
+      info &"Dependency: {dep}"
+      enqueuePackage(dep.name)
+  except NimbleFileNotFound as e:
+    let errorMessage = &"Can't fetch dependenciess for '{packageName}'.\n"
+    nimbyQuit(errorMessage & e.msg)
 
 proc worker(id: int) {.thread.} =
   ## Worker thread that processes packages from the queue.
@@ -382,10 +387,12 @@ proc addConfigDir(path: string) =
 
 proc addConfigPackage(name: string) =
   ## Add a package to the nim.cfg file.
-  let package = getNimbleFile(name)
-  if package == nil:
-    nimbyQuit(&"Can't add config package: Nimble file not found: {name}")
-  addConfigDir(package.installDir / package.srcDir)
+  try: 
+    let package = getNimbleFile(name)
+    addConfigDir(package.installDir / package.srcDir)
+  except NimbleFileNotFound as e:
+    let errorMessage = &"Can't add package '{name}' to config.\n"
+    nimbyQuit(errorMessage & e.msg)
 
 proc removeConfigDir(path: string) =
   ## Remove a directory from the nim.cfg file.
@@ -401,19 +408,24 @@ proc removeConfigDir(path: string) =
 
 proc removeConfigPackage(name: string) =
   ## Remove the package from the nim.cfg file.
-  let package = getNimbleFile(name)
-  if package == nil:
-    nimbyQuit(&"Can't remove config package: Nimble file not found: {name}")
-  removeConfigDir(package.installDir / package.srcDir)
+  try:
+    let package = getNimbleFile(name)
+    removeConfigDir(package.installDir / package.srcDir)
+  except NimbleFileNotFound as e:
+    let errorMessage = &"Can't remove package '{name}' from config.\n"
+    nimbyQuit(errorMessage & e.msg)
 
 proc addTreeToConfig(path: string) =
   ## Add the tree of a package to the nim.cfg file.
-  let nimbleFile = getNimbleFile(path)
-  if nimbleFile == nil:
-    nimbyQuit(&"Can't add tree to config: Nimble file not found: {path}")
-  addConfigDir(nimbleFile.installDir / nimbleFile.srcDir)
-  for dependency in nimbleFile.dependencies:
-    enqueuePackage(dependency.name)
+  try:
+    #TODO: this is probably bugged, or at least the name 'path' is wrong
+    let nimbleFile = getNimbleFile(path)
+    addConfigDir(nimbleFile.installDir / nimbleFile.srcDir)
+    for dependency in nimbleFile.dependencies:
+      enqueuePackage(dependency.name)
+  except NimbleFileNotFound as e:
+    let errorMessage = &"Can't add package '{path}'s tree to config.\n"
+    nimbyQuit(errorMessage & e.msg)
 
 proc isCleanRepo(path: string): bool =
   let outstr = runOnce(&"git -C {path} status --porcelain")
@@ -564,14 +576,16 @@ proc updatePackage(argument: string) =
   if argument == "":
     nimbyQuit("No package specified for update")
   info &"Updating package: {argument}"
-  let package = getNimbleFile(argument)
-  if package == nil:
-    nimbyQuit(&"Can't update package: Nimble file not found: {argument}")
-  let packagePath = package.installDir
-  if not dirExists(packagePath):
-    nimbyQuit(&"Package not found: {packagePath}")
-  runSafe(&"git -C {packagePath} pull")
-  print &"Updated package: {argument}"
+  try: 
+    let package = getNimbleFile(argument)
+    let packagePath = package.installDir
+    if not dirExists(packagePath):
+      nimbyQuit(&"Package not found: {packagePath}")
+    runSafe(&"git -C {packagePath} pull")
+    print &"Updated package: {argument}"
+  except NimbleFileNotFound as e:
+    let errorMessage = &"Can't update package '{argument}'.\n"
+    nimbyQuit(errorMessage & e.msg)
 
 proc removePackage(argument: string) =
   ## Remove a package.
@@ -579,24 +593,28 @@ proc removePackage(argument: string) =
     nimbyQuit("No package specified for removal")
   info &"Removing package: {argument}"
   removeConfigPackage(argument)
-  let package = getNimbleFile(argument)
-  if package == nil:
-    nimbyQuit(&"Can't remove package: Nimble file not found: {argument}")
-  let packagePath = package.installDir
-  if not dirExists(packagePath):
-    nimbyQuit(&"Package not found: {packagePath}")
-  removeDir(packagePath)
-  print &"Removed package: {argument}"
+  try:
+    let package = getNimbleFile(argument)
+    let packagePath = package.installDir
+    if not dirExists(packagePath):
+      nimbyQuit(&"Package not found: {packagePath}")
+    removeDir(packagePath)
+    print &"Removed package: {argument}"
+  except NimbleFileNotFound as e:
+    let errorMessage = &"Can't remove package '{argument}'.\n"
+    nimbyQuit(errorMessage & e.msg)
 
 proc listPackage(argument: string) =
   ## List a package.
-  let nimbleFile = getNimbleFile(argument)
-  if nimbleFile != nil:
+  try:
+    let nimbleFile = getNimbleFile(argument)
     let packageName = argument
     let packageVersion = nimbleFile.version
     let gitUrl = readPackageUrl(packageName)
     let gitHash = readGitHash(packageName)
     print &"{packageName} {packageVersion} {gitUrl} {gitHash}"
+  except NimbleFileNotFound:
+    discard
 
 proc listPackages(argument: string) =
   ## List all packages in the workspace.
@@ -610,13 +628,15 @@ proc listPackages(argument: string) =
 
 proc treePackage(name, indent: string) =
   ## Walk the tree of a package.
-  let nimbleFile = getNimbleFile(name)
-  if nimbleFile != nil:
+  try:
+    let nimbleFile = getNimbleFile(name)
     let packageName = name
     let packageVersion = nimbleFile.version
     print &"{indent}{packageName} {packageVersion}"
     for dependency in nimbleFile.dependencies:
       treePackage(dependency.name, indent & "  ")
+  except NimbleFileNotFound:
+    discard
 
 proc treePackages(argument: string) =
   ## Tree the package dependencies.
@@ -630,18 +650,18 @@ proc treePackages(argument: string) =
 
 proc checkPackage(packageName: string) =
   ## Check a package.
-  let nimbleFile = getNimbleFile(packageName)
-  if nimbleFile == nil:
-    print &"Package `{packageName}` is not a Nim project (no .nimble file found)."
-    return
-  for dependency in nimbleFile.dependencies:
-    if not dirExists(dependency.name):
-      print &"Dependency `{dependency.name}` not found for package `{packageName}`."
-  if not fileExists(&"nim.cfg"):
-    nimbyQuit(&"Package `nim.cfg` not found.")
-  let nimCfg = readFileSafe("nim.cfg")
-  if not nimCfg.contains(&"--path:\"{packageName}/") and not nimCfg.contains(&"--path:\"{packageName}\""):
-    print &"Package `{packageName}` not found in nim.cfg."
+  try:
+    let nimbleFile = getNimbleFile(packageName)
+    for dependency in nimbleFile.dependencies:
+      if not dirExists(dependency.name):
+        print &"Dependency `{dependency.name}` not found for package `{packageName}`."
+    if not fileExists(&"nim.cfg"):
+      nimbyQuit(&"Package `nim.cfg` not found.")
+    let nimCfg = readFileSafe("nim.cfg")
+    if not nimCfg.contains(&"--path:\"{packageName}/") and not nimCfg.contains(&"--path:\"{packageName}\""):
+      print &"Package `{packageName}` not found in nim.cfg."
+  except NimbleFileNotFound:
+    print &"Package '{packageName}' is not a Nim project (no .nimble file found)."
 
 proc doctorPackage(argument: string) =
   ## Diagnose packages and fix configuration issues.
@@ -689,33 +709,28 @@ proc doctorPackage(argument: string) =
         for dir in nonworkspaceDirs:
           echo dir, '/'
 
-proc lockPackage(argument: string) =
+proc lockPackage(package: string) =
   ## Generate a lock file for a package.
-  for packageName in [argument, getGlobalPackagesDir() / argument]:
-    let nimbleFile = getNimbleFile(packageName)
-    if nimbleFile == nil:
-      continue
-    var listedDeps: seq[string]
-    proc walkDeps(packageName: string) =
-      let nimbleFile = getNimbleFile(packageName)
-      if nimbleFile == nil:
-        return
+  try:
+    var listedDeps = @[package]
+
+    proc walkDeps(package: string, root: bool) =
+      var nimbleFile = getNimbleFile(package)
+
+      if not root:
+        let url = readPackageUrl(package)
+        let version = nimbleFile.version
+        let gitHash = readGitHash(package)
+        print &"{package} {version} {url} {gitHash}"
+        listedDeps.add(package)
 
       for dependency in nimbleFile.dependencies:
         if dependency.name notin listedDeps:
-          let url = readPackageUrl(dependency.name)
-
-          let nimbleFile = getNimbleFile(dependency.name)
-          if nimbleFile == nil:
-            continue
-
-          let version = nimbleFile.version
-          let gitHash = readGitHash(dependency.name)
-          print &"{dependency.name} {version} {url} {gitHash}"
-          listedDeps.add(dependency.name)
-          walkDeps(dependency.name)
-    walkDeps(packageName)
-    break
+          walkDeps(dependency.name, false)
+    walkDeps(package, true)
+  except NimbleFileNotFound as e:
+    let errorMessage = &"Can't generate a lock file for '{package}'.\n"
+    nimbyQuit(errorMessage & e.msg)
 
 proc syncPackage(path: string) =
   ## Synchronize packages from a lock file.
