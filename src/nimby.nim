@@ -709,27 +709,27 @@ proc doctorPackage(argument: string) =
         for dir in nonworkspaceDirs:
           echo dir, '/'
 
-proc lockPackage(package: string) =
+proc lockPackage(packageName: string) =
   ## Generate a lock file for a package.
   try:
-    var listedDeps = @[package]
+    var listedDeps = @[packageName]
 
-    proc walkDeps(package: string, root: bool) =
-      var nimbleFile = getNimbleFile(package)
+    proc walkDeps(packageName: string, root: bool) =
+      var package = getNimbleFile(packageName)
 
       if not root:
-        let url = readPackageUrl(package)
-        let version = nimbleFile.version
-        let gitHash = readGitHash(package)
-        print &"{package} {version} {url} {gitHash}"
-        listedDeps.add(package)
+        let url = readPackageUrl(packageName)
+        let version = package.version
+        let gitHash = readGitHash(packageName)
+        print &"{packageName} {version} {url} {gitHash}"
+        listedDeps.add(packageName)
 
-      for dependency in nimbleFile.dependencies:
+      for dependency in package.dependencies:
         if dependency.name notin listedDeps:
           walkDeps(dependency.name, false)
-    walkDeps(package, true)
+    walkDeps(packageName, true)
   except NimbleFileNotFound as e:
-    let errorMessage = &"Can't generate a lock file for '{package}'.\n"
+    let errorMessage = &"Can't generate a lock file for '{packageName}'.\n"
     nimbyQuit(errorMessage & e.msg)
 
 proc syncPackage(path: string) =
