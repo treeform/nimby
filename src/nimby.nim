@@ -32,6 +32,7 @@ type
 var
   verbose: bool = false
   global: bool = false
+  yes: bool = false
   source: bool = false
   updatedGlobalPackages: bool = false
   timeStarted: float64
@@ -308,6 +309,21 @@ proc getGlobalPackage(packageName: string): JsonNode =
     if p["name"].getStr() == packageName:
       return p
 
+proc promptYesNo(message: string, defaultYes: bool = true): bool =
+  if yes:
+    return true
+
+  stdout.write message
+  stdout.write if defaultYes: " [Y/n] " else: " [y/N] "
+  let answer = stdin.readLine().strip.toLowerAscii
+
+  if answer in ["yes", "y"]:
+    true
+  elif answer in ["no", "n"]:
+    false
+  else:
+    defaultYes
+
 proc fetchPackage(argument: string) {.gcsafe.}
 proc addTreeToConfig(path: string) {.gcsafe.}
 
@@ -571,21 +587,48 @@ proc installPackage(argument: string) =
   timeEnd()
   nimbyQuit(0)
 
-proc updatePackage(argument: string) =
+proc updatePackage(packageName: string) =
+  let package = getNimbleFile(packageName)
+  let packagePath = package.installDir
+
+  if not dirExists(packagePath):
+    nimbyQuit(&"Package not found: {packagePath}")
+
+  print &"Updating package: {packageName}"
+  runSafe(&"git -C {packagePath} pull")
+  print &"Updated package: {packageName}"
+
+proc updateSinglePackage(packageName: string) =
   ## Update a package.
-  if argument == "":
-    nimbyQuit("No package specified for update")
-  info &"Updating package: {argument}"
-  try: 
-    let package = getNimbleFile(argument)
-    let packagePath = package.installDir
-    if not dirExists(packagePath):
-      nimbyQuit(&"Package not found: {packagePath}")
-    runSafe(&"git -C {packagePath} pull")
-    print &"Updated package: {argument}"
+  if packageName == "":
+    let noPackageMsg = "No package to update specified.\n"
+    let updateAllMsg = "Update all packages with 'nimby update --all'"
+    nimbyQuit(noPackageMsg & updateAllMsg)
+
+  try:
+    updatePackage(packageName)
   except NimbleFileNotFound as e:
-    let errorMessage = &"Can't update package '{argument}'.\n"
+    let errorMessage = &"Can't update package '{packageName}'.\n"
     nimbyQuit(errorMessage & e.msg)
+
+proc updateAllPackages() =
+  ## Update all packages.
+  if not promptYesNo("This will update all packages, including global packages that affect all workspaces.\nContinue?"):
+    nimbyQuit("Aborted.")
+
+  for kind, path in walkDir("."):
+    echo "walk ", path
+    let
+      packageName = path.lastPathPart
+      localPath = path / packageName & ".nimble"
+      globalPath = getGlobalPackagesDir() / packageName / packageName & ".nimble"
+      foundPath =
+        if fileExists(localPath): localPath
+        elif fileExists(globalPath): globalPath
+        else: ""
+
+    if kind == pcDir and foundPath != "":
+      updatePackage(packageName)
 
 proc removePackage(argument: string) =
   ## Remove a package.
@@ -604,12 +647,11 @@ proc removePackage(argument: string) =
     let errorMessage = &"Can't remove package '{argument}'.\n"
     nimbyQuit(errorMessage & e.msg)
 
-proc listPackage(argument: string) =
+proc listPackage(packageName: string) =
   ## List a package.
   try:
-    let nimbleFile = getNimbleFile(argument)
-    let packageName = argument
-    let packageVersion = nimbleFile.version
+    let package = getNimbleFile(packageName)
+    let packageVersion = package.version
     let gitUrl = readPackageUrl(packageName)
     let gitHash = readGitHash(packageName)
     print &"{packageName} {packageVersion} {gitUrl} {gitHash}"
@@ -859,6 +901,7 @@ when isMainModule:
   writeVersion()
 
   var subcommand, argument: string
+  var all = false
   var p = initOptParser()
   for kind, key, val in p.getopt():
     case kind
@@ -884,6 +927,10 @@ when isMainModule:
           createDir(getGlobalPackagesDir())
       of "source", "s":
         source = true
+      of "all", "a":
+        all = true
+      of "yes", "y":
+        yes = true
       else:
         print "Unknown option: " & key
         quit(1)
@@ -898,7 +945,9 @@ when isMainModule:
       of "": writeHelp()
       of "install": installPackage(argument)
       of "sync": syncPackage(argument)
-      of "update": updatePackage(argument)
+      of "update":
+        if all: updateAllPackages()
+        else: updateSinglePackage(argument)
       of "remove", "uninstall": removePackage(argument)
       of "list": listPackages(argument)
       of "tree": treePackages(argument)
