@@ -34,7 +34,7 @@ suite "`nimby lock` should":
   setup: clean()
 
   test "include dependencies in the package with their corresponding URLs":
-    cmd("nimby install git@github.com:RowDaBoat/nimbytestpackage.git")
+    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
     cmd("nimby lock nimbytestpackage > nimbytestpackage.lock")
     doAssert fileExists("nimbytestpackage.lock")
     let lockOut = readFile("nimbytestpackage.lock")
@@ -73,7 +73,7 @@ suite "`nimby update` should":
     &"\nexpected: {expected}\nactual:   {actual}"
 
   test "update local packages":
-    cmd("nimby install git@github.com:RowDaBoat/nimbytestpackage.git")
+    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
     let present = rewindPackage("nimbytestpackage", "HEAD^")
 
     cmd("nimby update nimbytestpackage")
@@ -82,7 +82,7 @@ suite "`nimby update` should":
     doAssert present == actual, expect(present, actual)
 
   test "update global packages with -g":
-    cmd("nimby install -g git@github.com:RowDaBoat/nimbytestpackage.git")
+    cmd("nimby install -g https://github.com/RowDaBoat/nimbytestpackage.git")
     let repoPath = "~/.nimby/pkgs/nimbytestpackage"
     let present = rewindPackage(repoPath, "HEAD^")
 
@@ -92,8 +92,8 @@ suite "`nimby update` should":
     doAssert present == actual, expect(present, actual)
 
   test "update local and global packages with --all":
-    cmd("nimby install -g git@github.com:treeform/bitty.git")
-    cmd("nimby install git@github.com:RowDaBoat/nimbytestpackage.git")
+    cmd("nimby install -g https://github.com/treeform/bitty.git")
+    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
     let bittyPath = "~/.nimby/pkgs/bitty"
     let ntpPath = "nimbytestpackage"
     let bittyPresent = rewindPackage(bittyPath, "HEAD^", "master")
