@@ -1,6 +1,6 @@
 # To make Nimby easy to install, it depends only on system packages.
 import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
-  locks, deques, sets]
+  locks, deques, sets, sequtils]
 
 when defined(monkey):
   # Monkey mode: Randomly raise errors to test error handling and robustness.
@@ -587,14 +587,13 @@ proc installPackage(argument: string) =
   timeEnd()
   nimbyQuit(0)
 
-proc updatePackage(packageName: string) =
-  let package = getNimbleFile(packageName)
+proc updatePackage(packageFilePath: string, packageName: string) =
+  let package = parseNimbleFile(packageFilePath)
   let packagePath = package.installDir
 
   if not dirExists(packagePath):
     nimbyQuit(&"Package not found: {packagePath}")
 
-  print &"Updating package: {packageName}"
   runSafe(&"git -C {packagePath} pull")
   print &"Updated package: {packageName}"
 
@@ -605,30 +604,34 @@ proc updateSinglePackage(packageName: string) =
     let updateAllMsg = "Update all packages with 'nimby update --all'"
     nimbyQuit(noPackageMsg & updateAllMsg)
 
-  try:
-    updatePackage(packageName)
-  except NimbleFileNotFound as e:
-    let errorMessage = &"Can't update package '{packageName}'.\n"
-    nimbyQuit(errorMessage & e.msg)
+  let localPackage = packageName / packageName & ".nimble"
+  let globalPackage = getGlobalPackagesDir() / packageName / packageName & ".nimble"
+
+  if fileExists(localPackage) and not global:
+    updatePackage(localPackage, packageName)
+  elif fileExists(globalPackage):
+    updatePackage(globalPackage, packageName & "(global)")
+  else:
+    let errorMessage = &"Can't update package '{packageName}'. Package not found in local or global directories.\n"
+    let pathsMessage = &"Searched paths:\n  local:  {localPackage}\n  global: {globalPackage}"
+    nimbyQuit(errorMessage & pathsMessage)
+
+proc walkPackages(path: string): seq[tuple[path: string, name: string]] =
+  let walk = path.walkDir.toSeq
+  let dirs = walk.filterIt(it.kind == pcDir).mapIt(it[1])
+  let nimbles = dirs.mapIt((path: it / it.splitFile[1] & ".nimble", name: it.splitFile[1]))
+  result = nimbles.filterIt(fileExists(it.path))
 
 proc updateAllPackages() =
   ## Update all packages.
   if not promptYesNo("This will update all packages, including global packages that affect all workspaces.\nContinue?"):
     nimbyQuit("Aborted.")
 
-  for kind, path in walkDir("."):
-    echo "walk ", path
-    let
-      packageName = path.lastPathPart
-      localPath = path / packageName & ".nimble"
-      globalPath = getGlobalPackagesDir() / packageName / packageName & ".nimble"
-      foundPath =
-        if fileExists(localPath): localPath
-        elif fileExists(globalPath): globalPath
-        else: ""
+  for package in getGlobalPackagesDir().walkPackages:
+    updatePackage(package.path, package.name & " (global)")
 
-    if kind == pcDir and foundPath != "":
-      updatePackage(packageName)
+  for package in ".".walkPackages:
+    updatePackage(package.path, package.name)
 
 proc removePackage(argument: string) =
   ## Remove a package.

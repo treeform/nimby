@@ -27,5 +27,8 @@ jobs:
       - name: Add Nimby to PATH
         run: echo "$PWD/src" >> "$GITHUB_PATH"
 
-      - name: Run Nimby Tests
+      - name: Run Nimby Unit Tests
         run: nim r tests/test_parsing.nim
+
+      - name: Run Nimby Functional Tests
+        run: nim r tests/test_commands.nim
