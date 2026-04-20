@@ -310,6 +310,7 @@ proc getGlobalPackage(packageName: string): JsonNode =
       return p
 
 proc promptYesNo(message: string, defaultYes: bool = true): bool =
+  ## Prompt the user for a [Y/n] confirmation.
   if yes:
     return true
 
@@ -588,8 +589,10 @@ proc installPackage(argument: string) =
   nimbyQuit(0)
 
 proc updatePackage(packageFilePath: string, packageName: string) =
-  let package = parseNimbleFile(packageFilePath)
-  let packagePath = package.installDir
+  ## Update a package on a certain path
+  let
+    package = parseNimbleFile(packageFilePath)
+    packagePath = package.installDir
 
   if not dirExists(packagePath):
     nimbyQuit(&"Package not found: {packagePath}")
@@ -600,26 +603,31 @@ proc updatePackage(packageFilePath: string, packageName: string) =
 proc updateSinglePackage(packageName: string) =
   ## Update a package.
   if packageName == "":
-    let noPackageMsg = "No package to update specified.\n"
-    let updateAllMsg = "Update all packages with 'nimby update --all'"
+    let
+      noPackageMsg = "No package to update specified.\n"
+      updateAllMsg = "Update all packages with 'nimby update --all'"
+
     nimbyQuit(noPackageMsg & updateAllMsg)
 
-  let localPackage = packageName / packageName & ".nimble"
-  let globalPackage = getGlobalPackagesDir() / packageName / packageName & ".nimble"
+  let
+    localPackage = packageName / packageName & ".nimble"
+    globalPackage = getGlobalPackagesDir() / packageName / packageName & ".nimble"
 
   if fileExists(localPackage) and not global:
     updatePackage(localPackage, packageName)
   elif fileExists(globalPackage):
     updatePackage(globalPackage, packageName & "(global)")
   else:
-    let errorMessage = &"Can't update package '{packageName}'. Package not found in local or global directories.\n"
-    let pathsMessage = &"Searched paths:\n  local:  {localPackage}\n  global: {globalPackage}"
+    let
+      errorMessage = &"Can't update package '{packageName}'. Package not found in local or global directories.\n"
+      pathsMessage = &"Searched paths:\n  local:  {localPackage}\n  global: {globalPackage}"
     nimbyQuit(errorMessage & pathsMessage)
 
 proc walkPackages(path: string): seq[tuple[path: string, name: string]] =
-  let walk = path.walkDir.toSeq
-  let dirs = walk.filterIt(it.kind == pcDir).mapIt(it[1])
-  let nimbles = dirs.mapIt((path: it / it.splitFile[1] & ".nimble", name: it.splitFile[1]))
+  let
+    walk = path.walkDir.toSeq
+    dirs = walk.filterIt(it.kind == pcDir).mapIt(it[1])
+    nimbles = dirs.mapIt((path: it / it.splitFile[1] & ".nimble", name: it.splitFile[1]))
   result = nimbles.filterIt(fileExists(it.path))
 
 proc updateAllPackages() =
@@ -653,10 +661,11 @@ proc removePackage(argument: string) =
 proc listPackage(packageName: string) =
   ## List a package.
   try:
-    let package = getNimbleFile(packageName)
-    let packageVersion = package.version
-    let gitUrl = readPackageUrl(packageName)
-    let gitHash = readGitHash(packageName)
+    let
+      package = getNimbleFile(packageName)
+      packageVersion = package.version
+      gitUrl = readPackageUrl(packageName)
+      gitHash = readGitHash(packageName)
     print &"{packageName} {packageVersion} {gitUrl} {gitHash}"
   except NimbleFileNotFound:
     discard
@@ -674,9 +683,10 @@ proc listPackages(argument: string) =
 proc treePackage(name, indent: string) =
   ## Walk the tree of a package.
   try:
-    let nimbleFile = getNimbleFile(name)
-    let packageName = name
-    let packageVersion = nimbleFile.version
+    let
+      nimbleFile = getNimbleFile(name)
+      packageName = name
+      packageVersion = nimbleFile.version
     print &"{indent}{packageName} {packageVersion}"
     for dependency in nimbleFile.dependencies:
       treePackage(dependency.name, indent & "  ")
@@ -763,9 +773,10 @@ proc lockPackage(packageName: string) =
       var package = getNimbleFile(packageName)
 
       if not root:
-        let url = readPackageUrl(packageName)
-        let version = package.version
-        let gitHash = readGitHash(packageName)
+        let
+          url = readPackageUrl(packageName)
+          version = package.version
+          gitHash = readGitHash(packageName)
         print &"{packageName} {version} {url} {gitHash}"
         listedDeps.add(packageName)
 
