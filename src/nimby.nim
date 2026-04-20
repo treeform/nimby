@@ -619,8 +619,13 @@ proc updateSinglePackage(packageName: string) =
     updatePackage(globalPackage, packageName & "(global)")
   else:
     let
-      errorMessage = &"Can't update package '{packageName}'. Package not found in local or global directories.\n"
-      pathsMessage = &"Searched paths:\n  local:  {localPackage}\n  global: {globalPackage}"
+      errorMessage =
+        &"Can't update package '{packageName}'. Package not found in local " &
+        "or global directories.\n"
+      pathsMessage =
+        &"Searched paths:\n"&
+        &"  local:  {localPackage}\n" &
+        &"  global: {globalPackage}"
     nimbyQuit(errorMessage & pathsMessage)
 
 proc walkPackages(path: string): seq[tuple[path: string, name: string]] =
@@ -632,7 +637,11 @@ proc walkPackages(path: string): seq[tuple[path: string, name: string]] =
 
 proc updateAllPackages() =
   ## Update all packages.
-  if not promptYesNo("This will update all packages, including global packages that affect all workspaces.\nContinue?"):
+  var prompt =
+    "This will update all packages, including global packages that affect " &
+    "all workspaces.\nContinue?"
+
+  if not promptYesNo(prompt):
     nimbyQuit("Aborted.")
 
   for package in getGlobalPackagesDir().walkPackages:
@@ -960,8 +969,10 @@ when isMainModule:
       of "install": installPackage(argument)
       of "sync": syncPackage(argument)
       of "update":
-        if all: updateAllPackages()
-        else: updateSinglePackage(argument)
+        if all:
+          updateAllPackages()
+        else:
+          updateSinglePackage(argument)
       of "remove", "uninstall": removePackage(argument)
       of "list": listPackages(argument)
       of "tree": treePackages(argument)
