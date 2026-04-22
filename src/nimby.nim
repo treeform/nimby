@@ -1,6 +1,6 @@
 # To make Nimby easy to install, it depends only on system packages.
 import std/[os, json, times, osproc, parseopt, strutils, strformat, streams,
-  locks, deques, sets]
+  locks, deques, sets, sequtils]
 
 when defined(monkey):
   # Monkey mode: Randomly raise errors to test error handling and robustness.
@@ -32,6 +32,7 @@ type
 var
   verbose: bool = false
   global: bool = false
+  yes: bool = false
   source: bool = false
   updatedGlobalPackages: bool = false
   timeStarted: float64
@@ -308,6 +309,22 @@ proc getGlobalPackage(packageName: string): JsonNode =
     if p["name"].getStr() == packageName:
       return p
 
+proc promptYesNo(message: string, defaultYes: bool = true): bool =
+  ## Prompt the user for a [Y/n] confirmation.
+  if yes:
+    return true
+
+  stdout.write message
+  stdout.write if defaultYes: " [Y/n] " else: " [y/N] "
+  let answer = stdin.readLine().strip.toLowerAscii
+
+  if answer in ["yes", "y"]:
+    true
+  elif answer in ["no", "n"]:
+    false
+  else:
+    defaultYes
+
 proc fetchPackage(argument: string) {.gcsafe.}
 proc addTreeToConfig(path: string) {.gcsafe.}
 
@@ -571,21 +588,67 @@ proc installPackage(argument: string) =
   timeEnd()
   nimbyQuit(0)
 
-proc updatePackage(argument: string) =
+proc updatePackage(packageFilePath: string, packageName: string) =
+  ## Update a package on a certain path
+  let
+    package = parseNimbleFile(packageFilePath)
+    packagePath = package.installDir
+
+  if not dirExists(packagePath):
+    nimbyQuit(&"Package not found: {packagePath}")
+
+  runSafe(&"git -C {packagePath} pull")
+  print &"Updated package: {packageName}"
+
+proc updateSinglePackage(packageName: string) =
   ## Update a package.
-  if argument == "":
-    nimbyQuit("No package specified for update")
-  info &"Updating package: {argument}"
-  try: 
-    let package = getNimbleFile(argument)
-    let packagePath = package.installDir
-    if not dirExists(packagePath):
-      nimbyQuit(&"Package not found: {packagePath}")
-    runSafe(&"git -C {packagePath} pull")
-    print &"Updated package: {argument}"
-  except NimbleFileNotFound as e:
-    let errorMessage = &"Can't update package '{argument}'.\n"
-    nimbyQuit(errorMessage & e.msg)
+  if packageName == "":
+    let
+      noPackageMsg = "No package to update specified.\n"
+      updateAllMsg = "Update all packages with 'nimby update --all'"
+
+    nimbyQuit(noPackageMsg & updateAllMsg)
+
+  let
+    localPackage = packageName / packageName & ".nimble"
+    globalPackage = getGlobalPackagesDir() / packageName / packageName & ".nimble"
+
+  if fileExists(localPackage) and not global:
+    updatePackage(localPackage, packageName)
+  elif fileExists(globalPackage):
+    updatePackage(globalPackage, packageName & "(global)")
+  else:
+    let
+      errorMessage =
+        &"Can't update package '{packageName}'. Package not found in local " &
+        "or global directories.\n"
+      pathsMessage =
+        &"Searched paths:\n"&
+        &"  local:  {localPackage}\n" &
+        &"  global: {globalPackage}"
+    nimbyQuit(errorMessage & pathsMessage)
+
+proc walkPackages(path: string): seq[tuple[path: string, name: string]] =
+  let
+    walk = path.walkDir.toSeq
+    dirs = walk.filterIt(it.kind == pcDir).mapIt(it[1])
+    nimbles = dirs.mapIt((path: it / it.splitFile[1] & ".nimble", name: it.splitFile[1]))
+  result = nimbles.filterIt(fileExists(it.path))
+
+proc updateAllPackages() =
+  ## Update all packages.
+  var prompt =
+    "This will update all packages, including global packages that affect " &
+    "all workspaces.\nContinue?"
+
+  if not promptYesNo(prompt):
+    nimbyQuit("Aborted.")
+
+  for package in getGlobalPackagesDir().walkPackages:
+    updatePackage(package.path, package.name & " (global)")
+
+  for package in ".".walkPackages:
+    updatePackage(package.path, package.name)
 
 proc removePackage(argument: string) =
   ## Remove a package.
@@ -604,14 +667,14 @@ proc removePackage(argument: string) =
     let errorMessage = &"Can't remove package '{argument}'.\n"
     nimbyQuit(errorMessage & e.msg)
 
-proc listPackage(argument: string) =
+proc listPackage(packageName: string) =
   ## List a package.
   try:
-    let nimbleFile = getNimbleFile(argument)
-    let packageName = argument
-    let packageVersion = nimbleFile.version
-    let gitUrl = readPackageUrl(packageName)
-    let gitHash = readGitHash(packageName)
+    let
+      package = getNimbleFile(packageName)
+      packageVersion = package.version
+      gitUrl = readPackageUrl(packageName)
+      gitHash = readGitHash(packageName)
     print &"{packageName} {packageVersion} {gitUrl} {gitHash}"
   except NimbleFileNotFound:
     discard
@@ -629,9 +692,10 @@ proc listPackages(argument: string) =
 proc treePackage(name, indent: string) =
   ## Walk the tree of a package.
   try:
-    let nimbleFile = getNimbleFile(name)
-    let packageName = name
-    let packageVersion = nimbleFile.version
+    let
+      nimbleFile = getNimbleFile(name)
+      packageName = name
+      packageVersion = nimbleFile.version
     print &"{indent}{packageName} {packageVersion}"
     for dependency in nimbleFile.dependencies:
       treePackage(dependency.name, indent & "  ")
@@ -709,27 +773,28 @@ proc doctorPackage(argument: string) =
         for dir in nonworkspaceDirs:
           echo dir, '/'
 
-proc lockPackage(package: string) =
+proc lockPackage(packageName: string) =
   ## Generate a lock file for a package.
   try:
-    var listedDeps = @[package]
+    var listedDeps = @[packageName]
 
-    proc walkDeps(package: string, root: bool) =
-      var nimbleFile = getNimbleFile(package)
+    proc walkDeps(packageName: string, root: bool) =
+      var package = getNimbleFile(packageName)
 
       if not root:
-        let url = readPackageUrl(package)
-        let version = nimbleFile.version
-        let gitHash = readGitHash(package)
-        print &"{package} {version} {url} {gitHash}"
-        listedDeps.add(package)
+        let
+          url = readPackageUrl(packageName)
+          version = package.version
+          gitHash = readGitHash(packageName)
+        print &"{packageName} {version} {url} {gitHash}"
+        listedDeps.add(packageName)
 
-      for dependency in nimbleFile.dependencies:
+      for dependency in package.dependencies:
         if dependency.name notin listedDeps:
           walkDeps(dependency.name, false)
-    walkDeps(package, true)
+    walkDeps(packageName, true)
   except NimbleFileNotFound as e:
-    let errorMessage = &"Can't generate a lock file for '{package}'.\n"
+    let errorMessage = &"Can't generate a lock file for '{packageName}'.\n"
     nimbyQuit(errorMessage & e.msg)
 
 proc syncPackage(path: string) =
@@ -859,6 +924,7 @@ when isMainModule:
   writeVersion()
 
   var subcommand, argument: string
+  var all = false
   var p = initOptParser()
   for kind, key, val in p.getopt():
     case kind
@@ -884,6 +950,10 @@ when isMainModule:
           createDir(getGlobalPackagesDir())
       of "source", "s":
         source = true
+      of "all", "a":
+        all = true
+      of "yes", "y":
+        yes = true
       else:
         print "Unknown option: " & key
         quit(1)
@@ -898,7 +968,11 @@ when isMainModule:
       of "": writeHelp()
       of "install": installPackage(argument)
       of "sync": syncPackage(argument)
-      of "update": updatePackage(argument)
+      of "update":
+        if all:
+          updateAllPackages()
+        else:
+          updateSinglePackage(argument)
       of "remove", "uninstall": removePackage(argument)
       of "list": listPackages(argument)
       of "tree": treePackages(argument)
