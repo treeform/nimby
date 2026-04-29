@@ -19,6 +19,7 @@ type
   Dependency* = object
     name*: string
     url*: string
+    fragment*: string
     op*: string
     version*: string
 
@@ -263,6 +264,7 @@ proc parseNimbleFile*(fileName: string): NimbleFile =
       let dep = Dependency(
         name: parsed.packageName,
         url: parsed.url,
+        fragment: parsed.fragment,
         op: op,
         version: version
       )
@@ -336,6 +338,13 @@ proc enqueuePackage(packageName: string) =
     else:
       info &"Package already in queue: {packageName}"
 
+proc enqueuePackage(dep: Dependency) =
+  if dep.url != "":
+    let fullUrl = if dep.fragment != "": dep.url & "#" & dep.fragment else: dep.url
+    enqueuePackage(fullUrl)
+  else:
+    enqueuePackage(dep.name)
+
 proc popPackage(): string =
   ## Pop a package from the job queue or return an empty string.
   withLock(jobLock):
@@ -362,9 +371,9 @@ proc readPackageUrl(packageName: string): string =
 proc fetchDeps(packageName: string) =
   ## Fetch the dependencies of a package.
   try:
-    for dep in getNimbleFile(packageName).dependencies:
-      info &"Dependency: {dep}"
-      enqueuePackage(dep.name)
+    for dependency in getNimbleFile(packageName).dependencies:
+      info &"Dependency: {dependency}"
+      enqueuePackage(dependency)
   except NimbleFileNotFound as e:
     let errorMessage = &"Can't fetch dependenciess for '{packageName}'.\n"
     nimbyQuit(errorMessage & e.msg)
@@ -435,11 +444,10 @@ proc removeConfigPackage(name: string) =
 proc addTreeToConfig(path: string) =
   ## Add the tree of a package to the nim.cfg file.
   try:
-    #TODO: this is probably bugged, or at least the name 'path' is wrong
-    let nimbleFile = getNimbleFile(path)
+    let nimbleFile = getNimbleFile(path.extractFilename())
     addConfigDir(nimbleFile.installDir / nimbleFile.srcDir)
     for dependency in nimbleFile.dependencies:
-      enqueuePackage(dependency.name)
+      enqueuePackage(dependency)
   except NimbleFileNotFound as e:
     let errorMessage = &"Can't add package '{path}'s tree to config.\n"
     nimbyQuit(errorMessage & e.msg)
@@ -448,13 +456,17 @@ proc isCleanRepo(path: string): bool =
   let outstr = runOnce(&"git -C {path} status --porcelain")
   return outstr == ""
 
-proc cloneRepo(url, path: string, nocheckout = false, branch = "") =
-  let branchFlag = if branch != "": &" --branch {branch}" else: ""
-  let gitCmd =
-    if nocheckout:
-      &"git clone --no-checkout --depth 1{branchFlag} {url} {path}"
-    else:
-      &"git clone --depth 1{branchFlag} {url} {path}"
+proc cloneRepo(rawUrl, path: string, nocheckout = false, branch = "") =
+  ## Clones a repo from a url into path, optionally on a target branch
+  let
+    (_, url, fragment) = parseGitUrl(rawUrl)
+    resolvedBranch = if branch != "": branch else: fragment
+    branchFlag = if resolvedBranch != "": &" --branch {resolvedBranch}" else: ""
+    gitCmd =
+      if nocheckout:
+        &"git clone --no-checkout --depth 1{branchFlag} {url} {path}"
+      else:
+        &"git clone --depth 1{branchFlag} {url} {path}"
   try:
     runOnce(gitCmd)
   except:
@@ -479,7 +491,7 @@ proc fetchPackage(argument: string) =
       packagePath = nimblePath.parentDir()
     addConfigPackage(packageName)
     for dependency in parseNimbleFile(nimblePath).dependencies:
-      enqueuePackage(dependency.name)
+      enqueuePackage(dependency)
 
   elif argument.contains(" "):
 
