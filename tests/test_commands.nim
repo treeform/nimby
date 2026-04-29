@@ -35,6 +35,14 @@ suite "`nimby install` should":
     check not dirExists("mummy")
     check dirExists(expandTilde("~/.nimby/pkgs/mummy"))
 
+  test "work on branches":
+    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#branch")
+    check dirExists("nimbytestpackage")
+
+  test "resolve dependencies not present in nimble":
+    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#dep-not-in-nimble")
+    check dirExists("nimbytestpackage")
+
 suite "`nimby lock` should":
   setup: clean()
 
