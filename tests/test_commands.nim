@@ -14,6 +14,9 @@ proc cmd*(command: string): string {.discardable.} =
 
   return output
 
+proc branch(repo: string): string =
+  cmd(&"git -C {repo} rev-parse --abbrev-ref HEAD").strip
+
 proc clean() =
   ## Resets the test workspace and global nimby directories.
   removeDir(expandTilde("~/.nimby/nimbylock"))
@@ -35,13 +38,39 @@ suite "`nimby install` should":
     check not dirExists("mummy")
     check dirExists(expandTilde("~/.nimby/pkgs/mummy"))
 
+  test "work on https urls":
+    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
+    check dirExists("nimbytestpackage")
+
+  test "work on git urls":
+    cmd("nimby install git@github.com:RowDaBoat/nimbytestpackage.git#gitssh-dep")
+    check dirExists("nimbytestpackage")
+    check branch("nimbytestpackage") == "gitssh-dep"
+
   test "work on branches":
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#branch")
     check dirExists("nimbytestpackage")
+    check branch("nimbytestpackage") == "branch"
 
   test "resolve dependencies not present in nimble":
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#dep-not-in-nimble")
     check dirExists("nimbytestpackage")
+    check branch("nimbytestpackage") == "dep-not-in-nimble"
+    check dirExists("nimbytestdependency")
+
+  test "ignore #head fragments":
+    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#head")
+    check dirExists("nimbytestpackage")
+
+  test "work on supported ssh urls":
+    let protocols = ["ssh://", "git+ssh://"]
+
+    for protocol in protocols:
+      cmd(&"nimby install {protocol}git@github.com/RowDaBoat/nimbytestpackage.git#gitssh-dep")
+      check dirExists("nimbytestpackage")
+      check branch("nimbytestpackage") == "gitssh-dep"
+      check dirExists("nimbytestdependency")
+      cmd("rm -rf nimbytestpackage nimbytestdependency")
 
 suite "`nimby lock` should":
   setup: clean()
@@ -53,8 +82,6 @@ suite "`nimby lock` should":
     let
       lockOut = readFile("nimbytestpackage.lock")
       lockLines = lockOut.split('\n').filterIt(it.len > 0).toSeq[1..^1].mapIt(it.split(' '))
-
-    let
       expected = @[
         ("bitty", "https://github.com/treeform/bitty"),
         ("boxy", "https://github.com/treeform/boxy"),
