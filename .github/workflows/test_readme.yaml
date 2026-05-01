@@ -1,0 +1,37 @@
+name: Test README
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+jobs:
+  test_readme:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            container: quay.io/pypa/manylinux_2_34_x86_64
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    steps:
+      - name: Install build dependencies (Linux container)
+        if: matrix.container
+        run: yum install -y git gcc make which tar gzip curl
+
+      - uses: actions/checkout@v3
+      - uses: treeform/setup-nim-action@v6
+
+      - name: Build Nimby
+        run: nim c -d:release src/nimby.nim
+
+      - name: Add Nimby to PATH
+        run: echo "$PWD/src" >> "$GITHUB_PATH"
+
+      - name: Prepare README workspace
+        run: |
+          mkdir -p "$RUNNER_TEMP/nimby-readme"
+          cp "$GITHUB_WORKSPACE/README.md" "$RUNNER_TEMP/nimby-readme/README.md"
+
+      - name: Run README Tests
+        working-directory: ${{ runner.temp }}/nimby-readme
+        run: nim r "$GITHUB_WORKSPACE/tests/test_readme.nim"

@@ -86,72 +86,102 @@ This works perfectly for CI workflows, deployments, or any situation where youâ€
 ## Installation
 
 ### macOS ARM64
-```
+```sh skip
 curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.26/nimby-macOS-ARM64
 chmod +x nimby
 ```
 
 ### Linux X64
-```
+```sh skip
 curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.26/nimby-Linux-X64
 chmod +x nimby
 ```
 
 ### Linux ARM64
-```
+```sh skip
 curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.26/nimby-Linux-ARM64
 chmod +x nimby
 ```
 
 ### Windows
-```
+```sh skip
 curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/0.1.26/nimby-Windows-X64.exe
 ```
 
+### Nimble
+
+```sh skip
+nimble install nimby
+```
 
 ---
 
-## Add Nim to your PATH
+## Installing Nim
 
-```sh
+Nimby can install Nim itself into `~/.nimby/nim`:
+
+```sh skip
+nimby use 2.2.6
+```
+
+After that, add Nim's bin directory to `PATH`.
+
+For bash or zsh:
+
+```sh skip
 export PATH="$HOME/.nimby/nim/bin:$PATH"
 ```
 
-```sh
+For PowerShell:
+
+```sh skip
 $env:PATH = "$HOME\.nimby\nim\bin;$env:PATH"   # PowerShell
 ```
 
----
+## Installing Packages
 
-## Quick Start
-
-Install Nim itself:
+Installing from a git URL is useful for forks, private repositories, and
+packages that are not in the index:
 
 ```sh
-nimby use 2.2.4
+nimby install https://github.com/treeform/bitty.git
 ```
 
-Install a package:
-
-```sh
-nimby install fidget2
+```output
+Installing package: https://github.com/treeform/bitty.git
+Cloning into 'bitty'...
+Installed package: bitty
 ```
 
-Update a package:
+Fragments select a branch, tag, commit hash, or other git ref:
 
 ```sh
-nimby update fidget2
+nimby install https://github.com/treeform/nimbytestpackage.git#branch 2>&1 |
+  sed -n "/^Installing package:/p; /^Cloning into 'nimbytestpackage'...$/p; /^Installed package: nimbytestpackage$/p"
 ```
 
-Remove a package:
-
-```sh
-nimby remove fidget2
+```output
+Installing package: https://github.com/treeform/nimbytestpackage.git#branch
+Cloning into 'nimbytestpackage'...
+Installed package: nimbytestpackage
 ```
 
-Install globally:
+For day-to-day development, installing by package name checks Nim's package
+index and clones the package into the current workspace:
 
 ```sh
+nimby install silky 2>&1 |
+  sed -n '/^Installing package: silky$/p; /^Installed package: silky$/p'
+```
+
+```output
+Installing package: silky
+Installed package: silky
+```
+
+Global installs use `~/.nimby/pkgs` instead of the current workspace:
+
+```sh skip
 nimby install -g cligen
 ```
 
@@ -159,6 +189,40 @@ Nimby installs packages in parallel and updates your `nim.cfg` automatically.
 If it finds a `.nimble` file with version rules that do not match, it will warn you but still install HEAD, since that is what actually works in practice.
 
 ---
+
+## The CLI
+
+`nimby --version` prints the version and exits.
+
+```sh
+nimby --version
+```
+
+`nimby help` shows the command surface. This is a useful smoke test because it
+does not need a workspace.
+
+```sh
+nimby help
+```
+
+```output
+Usage: nimby <subcommand> [options]
+  ~ Minimal package manager for Nim. ~
+    -g, --global Install packages in the ~/.nimby/pkgs directory
+    -v, --version print the version of Nimby
+    -h, --help show this help message
+    -V, --verbose print verbose output
+Subcommands:
+  install    install all Nim packages in the current directory
+  update     update all Nim packages in the current directory
+  remove     remove all Nim packages in the current directory
+  list       list all Nim packages in the current directory
+  tree       show all packages as a dependency tree
+  doctor     diagnose all packages and fix linking issues
+  lock       generate a lock file for a package
+  sync       synchronize packages from a lock file
+  help       show this help message
+```
 
 ## Working with lock files
 
@@ -169,37 +233,84 @@ When you need a reproducible build, you freeze the exact commits.
 Generate a lock file:
 
 ```sh
-nimby lock
+nimby lock nimbytestpackage | grep -v '^Nimby ' > nimby.lock
+grep '^chroma ' nimby.lock | cut -d' ' -f1-3
+```
+
+```output
+chroma 1.0.0 https://github.com/treeform/chroma
 ```
 
 Install from a lock file:
 
 ```sh
-nimby sync
+mkdir synced
+cp nimby.lock synced/
+cd synced
+nimby sync nimby.lock 2>&1 | sed -n '/^Installed package: chroma$/p'
+```
+
+```output
+Installed package: chroma
+```
+
+The synchronized package is now part of the workspace.
+
+```sh
+cd synced
+nimby tree chroma
+```
+
+```output
+chroma 1.0.0
+```
+
+## Updating And Removing
+
+`update` runs git pull for a package checkout:
+
+```sh
+nimby update silky 2>&1 | sed -n '/^Updated package: silky$/p'
+```
+
+```output
+Updated package: silky
+```
+
+`update --all` updates both workspace and global packages. It asks before doing
+that, so use `-y` only when the command is already intentional:
+
+```sh
+nimby update --all -y >/dev/null && echo "Updated all packages"
+```
+
+```output
+Updated all packages
+```
+
+Removing a package also removes its path from `nim.cfg`.
+
+```sh
+nimby remove silky
+```
+
+```output
+Removed package: silky
+```
+
+Global synchronization is the same idea, but writes to the global package
+directory:
+
+```sh
+nimby sync -g nimby.lock 2>&1 | sed -n '/^Installed package: chroma$/p'
+```
+
+```output
+Installed package: chroma
 ```
 
 This is similar to how Cargo, npm, and other package managers use lock files, but kept as simple text that lists package names, URLs, and commits.
 
 ---
-
-## Other commands
-
-List all installed packages:
-
-```sh
-nimby list
-```
-
-View dependency tree:
-
-```sh
-nimby tree fidget2
-```
-
-Check workspace health:
-
-```sh
-nimby doctor
-```
 
 `nimby doctor` will report missing folders, broken git repos, and out-of-sync paths in your `nim.cfg`.
