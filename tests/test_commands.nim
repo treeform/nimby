@@ -42,10 +42,13 @@ suite "`nimby install` should":
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
     check dirExists("nimbytestpackage")
 
+  #[
+  # TODO: should be moved into treeform to work on CI
   test "work on git urls":
     cmd("nimby install git@github.com:RowDaBoat/nimbytestpackage.git#gitssh-dep")
     check dirExists("nimbytestpackage")
     check branch("nimbytestpackage") == "gitssh-dep"
+  ]#
 
   test "work on branches":
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#branch")
@@ -62,6 +65,8 @@ suite "`nimby install` should":
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#head")
     check dirExists("nimbytestpackage")
 
+  #[
+  # TODO: should be moved into treeform to work on CI
   test "work on supported ssh urls":
     let protocols = ["ssh://", "git+ssh://"]
 
@@ -71,6 +76,7 @@ suite "`nimby install` should":
       check branch("nimbytestpackage") == "gitssh-dep"
       check dirExists("nimbytestdependency")
       cmd("rm -rf nimbytestpackage nimbytestdependency")
+  ]#
 
 suite "`nimby lock` should":
   setup: clean()
