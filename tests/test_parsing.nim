@@ -80,21 +80,27 @@ var parsed = parseGitUrl("https://github.com/treeform/silky")
 doAssert parsed == ("silky", "https://github.com/treeform/silky", ""), "HTTPS URL without .git"
 
 parsed = parseGitUrl("https://github.com/treeform/shady.git")
-doAssert parsed == ("shady", "https://github.com/treeform/shady.git", ""), "HTTPS URL with .git"
+doAssert parsed == ("shady", "https://github.com/treeform/shady.git", ""), "HTTPS URL with .git: " & parsed[1]
+
+parsed = parseGitUrl("https://github.com/treeform/shady.git#branch")
+doAssert parsed == ("shady", "https://github.com/treeform/shady.git", "branch"), "HTTPS URL with fragment"
+
+parsed = parseGitUrl("https://github.com/treeform/shady.git#")
+doAssert parsed == ("shady", "https://github.com/treeform/shady.git", ""), "Empty fragment"
 
 parsed = parseGitUrl("https://github.com/treeform/shady.git#head")
-doAssert parsed == ("shady", "https://github.com/treeform/shady.git", "head"), "HTTPS URL with fragment"
+doAssert parsed == ("shady", "https://github.com/treeform/shady.git", ""), "Empty fragment"
 
 parsed = parseGitUrl("git@github.com:treeform/vmath.git")
-doAssert parsed == ("vmath", "git@github.com:treeform/vmath.git", ""), "SSH URL"
+doAssert parsed == ("vmath", "git@github.com:treeform/vmath.git", ""), "SSH URL without protocol"
+
+parsed = parseGitUrl("ssh://git@github.com:treeform/shady.git#fragment")
+doAssert parsed == ("shady", "ssh://git@github.com:treeform/shady.git", "fragment"), "SSH URL with protocol"
 
 parsed = parseGitUrl("https://gitea.example.com/user/my-package")
 doAssert parsed == ("my-package", "https://gitea.example.com/user/my-package", ""), "Custom domain"
 
 parsed = parseGitUrl("https://github.com/treeform/shady.git#v1.0.0")
 doAssert parsed == ("shady", "https://github.com/treeform/shady.git", "v1.0.0"), "Version fragment"
-
-parsed = parseGitUrl("https://github.com/treeform/shady.git#")
-doAssert parsed == ("shady", "https://github.com/treeform/shady.git", ""), "Empty fragment"
 
 echo "All parseNimbleFile and URL helper tests passed."

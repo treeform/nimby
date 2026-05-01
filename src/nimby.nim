@@ -219,19 +219,31 @@ proc writeHelp() =
   print "  sync       synchronize packages from a lock file"
   print "  help       show this help message"
 
-proc isGitUrl*(s: string): bool =
+proc isGitUrl*(candidate: string): bool =
   ## Check if a string is a git URL.
-  s.startsWith("http://") or s.startsWith("https://") or s.startsWith("git@")
+  let protocols = ["http://", "https://", "ssh://", "git+ssh://", "git@"]
+  for protocol in protocols:
+    if candidate.startsWith(protocol):
+      return true
+  return false
 
 proc parseGitUrl*(raw: string): tuple[packageName: string, url: string, fragment: string] =
   ## Parse a git URL into its package name, clean URL, and fragment (branch/tag/commit).
-  let parts = raw.split("#", maxsplit = 1)
-  result.url = parts[0]
-  result.fragment = if parts.len > 1 and parts[1] != "": parts[1] else: ""
-  var cleanUrl = result.url
-  if cleanUrl.endsWith(".git"):
-    cleanUrl = cleanUrl[0..^5]
-  result.packageName = cleanUrl.split("/")[^1]
+  let
+    parts = raw.split("#", maxsplit = 1)
+    url = parts[0]
+    fragment =
+      if parts.len > 1 and parts[1] != "head":
+        parts[1]
+      else:
+        ""
+    cleanUrl =
+      if url.endsWith(".git"):
+        url[0..^5]
+      else:
+        url
+    packageName = cleanUrl.split("/")[^1]
+  result = (packageName, url, fragment)
 
 proc parseNimbleFile*(fileName: string): NimbleFile =
   ## Parse the .nimble file and return a NimbleFile object.
