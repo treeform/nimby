@@ -221,7 +221,7 @@ proc writeHelp() =
 
 proc isGitUrl*(candidate: string): bool =
   ## Check if a string is a git URL.
-  let protocols = ["http://", "https://", "ssh://", "git+ssh://", "git@"]
+  let protocols = ["http://", "https://", "ssh://", "git+ssh://", "git@", "file://"]
   for protocol in protocols:
     if candidate.startsWith(protocol):
       return true
@@ -474,11 +474,9 @@ proc cloneRepo(rawUrl, path: string, nocheckout = false, branch = "") =
     (_, url, fragment) = parseGitUrl(rawUrl)
     resolvedBranch = if branch != "": branch else: fragment
     branchFlag = if resolvedBranch != "": &" --branch {resolvedBranch}" else: ""
-    gitCmd =
-      if nocheckout:
-        &"git clone --no-checkout --depth 1{branchFlag} {url} {path}"
-      else:
-        &"git clone --depth 1{branchFlag} {url} {path}"
+    noCheckoutFlag = if nocheckout: " --no-checkout" else: ""
+    submodulesFlags = " --recurse-submodules --shallow-submodules"
+    gitCmd = &"git clone{noCheckoutFlag}{submodulesFlags} --depth 1{branchFlag} {url} {path}"
   try:
     runOnce(gitCmd)
   except:
