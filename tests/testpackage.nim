@@ -3,10 +3,16 @@ import std/[os, osproc, sequtils, strutils, strformat]
 let testPackagesDir* = getTempDir() / "nimby_tests" / "packages"
 
 proc setupTestPackages*() =
-  ## Configures git for use in test package operations.
-  let commands = [
+  if not existsEnv("CI"):
+    return
+
+  ## Configures git with test credentials and rewrites SSH URLs to HTTPS on CI.
+  var commands = @[
     "git config --global user.email git@tests.com",
-    "git config --global user.name 'Tests'"
+    "git config --global user.name 'Tests'",
+    "git config --global --replace-all url.\"https://github.com/\".insteadOf \"ssh://git@github.com/\"",
+    "git config --global --add url.\"https://github.com/\".insteadOf \"git+ssh://git@github.com/\"",
+    "git config --global --add url.\"https://github.com/\".insteadOf \"git@github.com:\""
   ]
 
   for command in commands:

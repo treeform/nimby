@@ -110,7 +110,9 @@ suite "`nimby install` should":
     check dirExists("package" / "nimbytestpackage")
 
 suite "`nimby lock` should":
-  setup: clean()
+  setup:
+    setupTestPackages()
+    clean()
 
   test "include dependencies in the package with their corresponding URLs":
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
@@ -133,7 +135,9 @@ suite "`nimby lock` should":
     check not actual.contains("nimbytestpackage")
 
 suite "`nimby update` should":
-  setup: clean()
+  setup:
+    setupTestPackages()
+    clean()
   proc getCommit(repo: string): string =
     ## Returns the current HEAD commit hash for the given repo.
     cmd(&"git -C {repo} rev-parse HEAD").strip
