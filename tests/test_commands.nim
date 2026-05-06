@@ -27,7 +27,9 @@ proc clean() =
   setCurrentDir(testWorkspace)
 
 suite "`nimby install` should":
-  setup: clean()
+  setup:
+    setupTestPackages()
+    clean()
 
   test "create the package locally":
     cmd("nimby install -V mummy")
