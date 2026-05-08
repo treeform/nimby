@@ -1,4 +1,5 @@
 import std/[os, osproc, strutils, sequtils, tables, strformat, unittest]
+import testpackage
 
 let testWorkspace* = getTempDir() / "nimby_tests"
 
@@ -26,7 +27,9 @@ proc clean() =
   setCurrentDir(testWorkspace)
 
 suite "`nimby install` should":
-  setup: clean()
+  setup:
+    setupTestPackages()
+    clean()
 
   test "create the package locally":
     cmd("nimby install -V mummy")
@@ -38,48 +41,78 @@ suite "`nimby install` should":
     check not dirExists("mummy")
     check dirExists(expandTilde("~/.nimby/pkgs/mummy"))
 
-  test "work on https urls":
-    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
+  test "work on file:// urls":
+    createTestPackage("package")
+    cmd(&"nimby install file://{testPackagesDir}/package")
+    check dirExists("package")
+
+  test "work on https:// urls":
+    cmd("nimby install https://github.com/treeform/nimbytestpackage.git")
     check dirExists("nimbytestpackage")
 
-  #[
-  # TODO: should be moved into treeform to work on CI
-  test "work on git urls":
-    cmd("nimby install git@github.com:RowDaBoat/nimbytestpackage.git#gitssh-dep")
+  test "work on ssh:// urls":
+    cmd("nimby install ssh://git@github.com/treeform/nimbytestpackage.git")
     check dirExists("nimbytestpackage")
-    check branch("nimbytestpackage") == "gitssh-dep"
-  ]#
+
+  test "work on git+ssh:// urls":
+    cmd("nimby install git+ssh://git@github.com/treeform/nimbytestpackage.git")
+    check dirExists("nimbytestpackage")
+
+  test "work on git@ urls":
+    cmd("nimby install git@github.com:treeform/nimbytestpackage.git")
+    check dirExists("nimbytestpackage")
 
   test "work on branches":
-    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#branch")
-    check dirExists("nimbytestpackage")
-    check branch("nimbytestpackage") == "branch"
-
-  test "resolve dependencies not present in nimble":
-    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#dep-not-in-nimble")
-    check dirExists("nimbytestpackage")
-    check branch("nimbytestpackage") == "dep-not-in-nimble"
-    check dirExists("nimbytestdependency")
+    createTestPackage("package", "branch")
+    cmd(&"nimby install file://{testPackagesDir}/package#branch")
+    check dirExists("package")
+    check branch("package") == "branch"
 
   test "ignore #head fragments":
-    cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git#head")
-    check dirExists("nimbytestpackage")
+    createTestPackage("package")
+    cmd(&"nimby install file://{testPackagesDir}/package#head")
+    check dirExists("package")
 
-  #[
-  # TODO: should be moved into treeform to work on CI
-  test "work on supported ssh urls":
-    let protocols = ["ssh://", "git+ssh://"]
+  test "resolve required packages not present in nimble":
+    createTestPackage("required")
+    createTestPackage("requirer", requires = [
+      &"file://{testPackagesDir}/required"
+    ])
+    cmd(&"nimby install file://{testPackagesDir}/requirer")
+    check dirExists("requirer")
+    check dirExists("required")
 
-    for protocol in protocols:
-      cmd(&"nimby install {protocol}git@github.com/RowDaBoat/nimbytestpackage.git#gitssh-dep")
-      check dirExists("nimbytestpackage")
-      check branch("nimbytestpackage") == "gitssh-dep"
-      check dirExists("nimbytestdependency")
-      cmd("rm -rf nimbytestpackage nimbytestdependency")
-  ]#
+  test "resolve required packages with a branch fragment":
+    createTestPackage("required", "feature")
+    createTestPackage("requirer", requires = [
+      &"file://{testPackagesDir}/required#feature"
+    ])
+    cmd(&"nimby install file://{testPackagesDir}/requirer")
+    check dirExists("requirer")
+    check dirExists("required")
+    check branch("required") == "feature"
+
+  test "resolve required packages with a head fragment ignoring it":
+    createTestPackage("required")
+    createTestPackage("requirer", requires = [
+      &"file://{testPackagesDir}/required#head"
+    ])
+    cmd(&"nimby install file://{testPackagesDir}/requirer")
+    check dirExists("requirer")
+    check dirExists("required")
+    check branch("required") == "main"
+
+  test "clone packages with their submodules":
+    createTestPackage("package")
+    addSubmodule(testPackagesDir / "package", "git@github.com:treeform/nimbytestpackage.git")
+    cmd(&"nimby install file://{testPackagesDir}/package")
+    check dirExists("package")
+    check dirExists("package" / "nimbytestpackage")
 
 suite "`nimby lock` should":
-  setup: clean()
+  setup:
+    setupTestPackages()
+    clean()
 
   test "include dependencies in the package with their corresponding URLs":
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
@@ -102,7 +135,9 @@ suite "`nimby lock` should":
     check not actual.contains("nimbytestpackage")
 
 suite "`nimby update` should":
-  setup: clean()
+  setup:
+    setupTestPackages()
+    clean()
   proc getCommit(repo: string): string =
     ## Returns the current HEAD commit hash for the given repo.
     cmd(&"git -C {repo} rev-parse HEAD").strip
