@@ -31,7 +31,7 @@ jobs:
         if: matrix.container
         run: yum install -y git gcc make which tar gzip curl
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: treeform/setup-nim-action@v6
 
       - name: Compute artifact name
@@ -49,7 +49,7 @@ jobs:
           nim c -o:dist/${{ steps.meta.outputs.artifact }} src/nimby.nim
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.meta.outputs.artifact }}
           path: dist/${{ steps.meta.outputs.artifact }}
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -69,7 +69,7 @@ jobs:
         run: ls -lah dist
 
       - name: Upload assets to GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
         env:

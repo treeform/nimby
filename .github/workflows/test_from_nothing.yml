@@ -20,7 +20,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     env:
-      NIM_VERSION: '2.2.6'
+      NIM_VERSION: '2.2.10'
       NIMBY_VERSION: '0.1.26'
     steps:
       - name: Install build dependencies (Linux container)
