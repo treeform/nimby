@@ -77,7 +77,7 @@ The global option works for both `nimby install -g` and even more importantly `n
 
 Yeah, installing Nim is actually pretty easy. You just copy a couple of folders, put them in the right place, and add `~/.nimby/nim/bin` to your system path. That’s it.
 
-I think it’s a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system `curl -L -o nimby https://github.com/treeform/nimby/releases/download/v0.1.2/nimby-Linux-X64`, and that’s all you need. Then you run `./nimby use 2.2.6` with the Nim version you want, and `./nimby install your/nimby.lock` with your lock file.
+I think it’s a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system `curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Linux-X64`, and that’s all you need. Then you run `./nimby use 2.2.10` with the Nim version you want, and `./nimby install your/nimby.lock` with your lock file.
 
 This works perfectly for CI workflows, deployments, or any situation where you’re starting with a blank machine. You don’t need to install anything else. Nimby downloads Nim, installs your packages, and you’re ready to go.
 
@@ -87,25 +87,25 @@ This works perfectly for CI workflows, deployments, or any situation where you�
 
 ### macOS ARM64
 ```sh skip
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.26/nimby-macOS-ARM64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-macOS-ARM64
 chmod +x nimby
 ```
 
 ### Linux X64
 ```sh skip
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.26/nimby-Linux-X64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Linux-X64
 chmod +x nimby
 ```
 
 ### Linux ARM64
 ```sh skip
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.26/nimby-Linux-ARM64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Linux-ARM64
 chmod +x nimby
 ```
 
 ### Windows
 ```sh skip
-curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/0.1.26/nimby-Windows-X64.exe
+curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Windows-X64.exe
 ```
 
 ### Nimble
@@ -121,7 +121,7 @@ nimble install nimby
 Nimby can install Nim itself into `~/.nimby/nim`:
 
 ```sh skip
-nimby use 2.2.6
+nimby use 2.2.10
 ```
 
 After that, add Nim's bin directory to `PATH`.
