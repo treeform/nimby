@@ -27,6 +27,10 @@ proc cmdFailAt*(workingDir, command: string): string {.discardable.} =
   echo output.indent(4)
   check exitCode != 0
 
+proc cmdFail*(command: string): string {.discardable.} =
+  ## Runs a shell command in the test workspace that is expected to fail.
+  cmdFailAt(testWorkspace, command)
+
 proc branch(repo: string): string =
   cmd(&"git -C {repo} rev-parse --abbrev-ref HEAD").strip
 
@@ -64,10 +68,27 @@ suite "`nimby install` should":
     setupTestPackages()
     clean()
 
+  test "require a package argument":
+    let output = cmdFail("nimby install")
+    check output.contains("No package specified for install.")
+    check not fileExists("nim.cfg")
+
+  test "refuse to install the current directory":
+    let output = cmdFail("nimby install .")
+    check output.contains("Refusing to install the current directory.")
+    check not fileExists("nim.cfg")
+
   test "create the package locally":
     cmd("nimby install -V mummy")
     check dirExists("mummy")
     cmd("nimby remove mummy")
+
+  test "install multiple packages from one command line":
+    createTestPackage("package")
+    createTestPackage("dependency")
+    cmd(&"nimby install file://{testPackagesDir}/package, file://{testPackagesDir}/dependency")
+    check dirExists("package")
+    check dirExists("dependency")
 
   test "create the package globally when used with `-g`":
     cmd("nimby install -g -V mummy")

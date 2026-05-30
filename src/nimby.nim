@@ -280,7 +280,7 @@ proc writeHelp() =
   print "    -V, --verbose print verbose output"
   print "Subcommands:"
   print "  create     create a Nimby workspace in the current directory"
-  print "  install    install all Nim packages in the current directory"
+  print "  install    install Nim packages into the current workspace"
   print "  update     update all Nim packages in the current directory"
   print "  remove     remove all Nim packages in the current directory"
   print "  list       list all Nim packages in the current directory"
@@ -685,24 +685,40 @@ proc prepareWorkspace(argument: string): string =
   result = normalizePathArgument(argument, startDir)
   setCurrentDir(findWorkspace(startDir))
 
-proc installPackage(argument: string) =
-  ## Install a package.
-  let packageArg =
-    if argument.endsWith(".nimble"):
-      prepareWorkspace(argument)
-    else:
-      prepareWorkspace()
-      argument
+proc parseInstallArgs(arguments: seq[string]): seq[string] =
+  ## Split package arguments by commas and trim shell-friendly separators.
+  for argument in arguments:
+    for packageArg in argument.split(','):
+      let packageArg = packageArg.strip()
+      if packageArg != "":
+        result.add(packageArg)
 
+proc installPackages(arguments: seq[string]) =
+  ## Install packages.
+  var packageArgs = parseInstallArgs(arguments)
+
+  if packageArgs.len == 0:
+    nimbyQuit("No package specified for install.")
+
+  for packageArg in packageArgs:
+    if packageArg in [".", "./", ".\\"]:
+      nimbyQuit("Refusing to install the current directory.")
+
+  let startDir = getCurrentDir()
+  for packageArg in packageArgs.mitems:
+    if packageArg.endsWith(".nimble"):
+      packageArg = normalizePathArgument(packageArg, startDir)
+
+  setCurrentDir(findWorkspace(startDir))
   timeStart()
-  print &"Installing package: {packageArg}"
 
-  if dirExists(packageArg):
-    nimbyQuit("Package already installed.")
+  for packageArg in packageArgs:
+    print &"Installing package: {packageArg}"
 
-  # Ensure the packages index is available before workers start.
-  # Enqueue the initial package.
-  enqueuePackage(packageArg)
+    if dirExists(packageArg):
+      nimbyQuit("Package already installed.")
+
+    enqueuePackage(packageArg)
 
   var threads: array[WorkerCount, Thread[int]]
   for i in 0 ..< WorkerCount:
@@ -1060,6 +1076,7 @@ when isMainModule:
 
   var
     subcommand, argument: string
+    arguments: seq[string]
     all = false
     p = initOptParser()
   for kind, key, val in p.getopt():
@@ -1069,6 +1086,7 @@ when isMainModule:
         subcommand = key
       else:
         argument = key
+        arguments.add(key)
     of cmdLongOption, cmdShortOption:
       case key
       of "help", "h":
@@ -1103,7 +1121,7 @@ when isMainModule:
     case subcommand
       of "": writeHelp()
       of "create": createWorkspace()
-      of "install": installPackage(argument)
+      of "install": installPackages(arguments)
       of "sync": syncPackage(argument)
       of "update":
         if all:

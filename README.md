@@ -18,7 +18,7 @@ curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimb
 chmod +x nimby
 ./nimby use 2.2.10
 ./nimby create
-./nimby install library
+./nimby install libraryA libraryB libraryC
 ./nimby lock library > library/nimby.lock
 ./nimby sync library/nimby.lock
 ```
@@ -49,24 +49,30 @@ You can also install globally with `-g` in the `~/.nimby/pkgs` folder. Nimby can
 ## How to use
 
 * Create a workspace with `nimby create` in the folder where you want packages to live.
-* Install with `nimby install library` for development.
+* Install with `nimby install libraryA libraryB libraryC` for development.
 * Keep your project alongside its dependencies in the workspace.
   ```
   workspace/
     nim.cfg
     project/
-    library/
+    libraryA/
+    libraryB/
+    libraryC/
   ```
 * Create a lock file with `nimby lock project > project/nimby.lock`.
   ```
-  library 1.0.0 https://github.com/treeform/library xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  libraryA 1.0.0 https://github.com/treeform/libraryA xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  libraryB 1.0.0 https://github.com/treeform/libraryB xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  libraryC 1.0.0 https://github.com/treeform/libraryC xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   ```
 * For CI and deployments, use the lock file with `nimby sync project/nimby.lock`.
   ```
   workspace/
     nim.cfg
     project/
-    library/
+    libraryA/
+    libraryB/
+    libraryC/
   ```
 
 ## Why always install HEAD?
@@ -226,6 +232,13 @@ Installing package: silky
 Installed package: silky
 ```
 
+You can install several packages in one command, with spaces or commas:
+
+```sh skip
+nimby install libraryA libraryB libraryC
+nimby install libraryA, libraryB, libraryC
+```
+
 Global installs use `~/.nimby/pkgs` instead of the current workspace:
 
 ```sh skip
@@ -261,7 +274,7 @@ Usage: nimby <subcommand> [options]
     -V, --verbose print verbose output
 Subcommands:
   create     create a Nimby workspace in the current directory
-  install    install all Nim packages in the current directory
+  install    install Nim packages into the current workspace
   update     update all Nim packages in the current directory
   remove     remove all Nim packages in the current directory
   list       list all Nim packages in the current directory
