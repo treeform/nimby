@@ -21,9 +21,43 @@ You can also install globally with `-g` in `~/.nimby/pkgs` folder. Nimby can ins
 
 When I added Nim to our company CI, our builds suddenly became very slow. Nimble installs took almost two minutes for Fidget2. That felt wrong, so I started digging.
 
-I tried replacing Nimble with a few simple shell scripts that just cloned the repos with git. It built fine, and was way way faster! 2 minutes vs 3 seconds faster.
+I tried replacing Nimble with a few simple shell scripts that just cloned the repos with git. It built fine, and was way way faster! So then I wrote nimby as a tool to just clone everything in parallel:
 
-So Nimby started from a simple idea: download Nim packages from git, do not resolve dependencies, and in parallel.
+* Nimble: 2 minutes
+* Nimby: 3 seconds
+
+At its core, nimby is does `git clone` and upates `nim.cfg` in the workspace folder.
+
+After that, nimby grew form a few basic ideas:
+
+* Have a single workspace folder.
+* Download Nim packages using git.
+* Do not resolve dependencies.
+* Always grab `#HEAD`.
+* Do everything in parallel.
+
+## How to use:
+
+* Create a workspace with `nimby create` in the folder where you want packages to live.
+* Install with `nimby install library` for development.
+* Develop your project alongside the dependencies in the `project` folder.
+  ```
+  workspace/
+    nim.cfg
+    project/
+    library/
+  ```
+* Crate a lock file with `nimby lock project > project/nimby.lock`.
+  ```
+  libraryA 1.0.0 https://github.com/treeform/librar xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  ```
+* During CI and deploy use lock `nimby sync project/nimby.lock`.
+  ```
+  workspace/
+    nim.cfg
+    project/
+    library
+  ```
 
 ## Why always install HEAD?
 
@@ -37,24 +71,19 @@ So Nimby follows the community approach and always checks out HEAD, because HEAD
 
 For development, installing from HEAD is the best way to move forward. It keeps everything current and in sync with how people actually develop Nim projects. It avoids diamond dependencies (where your package depends on A and B, but A and B depend on conflicting versions of C) and keeps things simple. I love simple things.
 
-But installing from HEAD is not good for CI, releases, or deployment to production. That’s where lock files come in. Since the community relies on HEAD, lock files give you a way to record exactly what worked at a given moment in time.
+But installing from HEAD is not good for CI, releases, or deployment to production. That’s where lock files come in. Since the development process relies on HEAD, lock files give you a way to record exactly what worked at a given moment in time for the deployment process.
 
-Generating a lock file is easy. Commit it along with your code, and when you need to reproduce a build, Nimby can install the exact dependencies and commits listed in that file. It's just a simple text file that lists package names, URLs, and commits.
-
-So the model is simple: use HEAD (`nimby install`) for development, and use lock files for deployment (`nimby sync`). It’s the best of both worlds.
-It's a simple text file that lists package names, URLs, and commits.
-
+Generating a lock file is easy. Commit it along with your code, and when you need to reproduce a build, Nimby can install the exact dependencies and commits listed in that file just run `nimby sync repo/nimby.lock`. It's just a simple text file that lists package names, URLs, and commits.
 
 ## What is the deal with the workspace folder?
 
-Create a workspace with `nimby create` in the folder where you want packages to
-live. After that, you can run commands from inside any package or subdirectory
-and Nimby will walk upward until it finds that workspace. If no workspace exists,
-Nimby will create one automatically only in plain directories. Inside a Git
-checkout or a Nimble package, it stops and asks you to run `nimby create` in the
-directory you really want as the workspace.
+Create a workspace with `nimby create` in the folder where you want packages to live.
+After that, you can run commands from inside any package or subdirectory and Nimby will walk upward until it finds that workspace.
+If no workspace exists, Nimby will create one automatically only in plain directories.
+Inside a Git checkout or a Nimble package, it stops and asks you to run `nimby create` in the directory you really want as the workspace.
 
 I think the workspace folder is great. The way I have things set up, there’s a single Nim config file, and all the packages I’m working on live together as simple git checkouts.
+
 Alongside them, I also keep clones of all the dependencies I use. Everything lives in one place:
 
 ```
@@ -82,7 +111,7 @@ The global option works for both `nimby install -g` and even more importantly `n
 
 Yeah, installing Nim is actually pretty easy. You just copy a couple of folders, put them in the right place, and add `~/.nimby/nim/bin` to your system path. That’s it.
 
-I think it’s a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system `curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Linux-X64`, and that’s all you need. Then you run `./nimby use 2.2.10` with the Nim version you want, and `./nimby install your/nimby.lock` with your lock file.
+I think it’s a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system `curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Linux-X64`, and that’s all you need. Then you run `./nimby use 2.2.10` with the Nim version you want, and `./nimby sync your/nimby.lock` with your lock file.
 
 This works perfectly for CI workflows, deployments, or any situation where you’re starting with a blank machine. You don’t need to install anything else. Nimby downloads Nim, installs your packages, and you’re ready to go.
 
