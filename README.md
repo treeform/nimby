@@ -253,6 +253,7 @@ Install from a lock file:
 mkdir synced
 cp nimby.lock synced/
 cd synced
+nimby create >/dev/null
 nimby sync nimby.lock 2>&1 | sed -n '/^Installed package: chroma$/p'
 ```
 
