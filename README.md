@@ -47,7 +47,12 @@ It's a simple text file that lists package names, URLs, and commits.
 
 ## What is the deal with the workspace folder?
 
-You always should run `nimby` commands from the workspace folder just like you would with `git clone`. It's not wrong to think of nimby like a `git clone` with extra steps.
+Create a workspace with `nimby create` in the folder where you want packages to
+live. After that, you can run commands from inside any package or subdirectory
+and Nimby will walk upward until it finds that workspace. If no workspace exists,
+Nimby will create one automatically only in plain directories. Inside a Git
+checkout or a Nimble package, it stops and asks you to run `nimby create` in the
+directory you really want as the workspace.
 
 I think the workspace folder is great. The way I have things set up, there’s a single Nim config file, and all the packages I’m working on live together as simple git checkouts.
 Alongside them, I also keep clones of all the dependencies I use. Everything lives in one place:
@@ -213,6 +218,7 @@ Usage: nimby <subcommand> [options]
     -h, --help show this help message
     -V, --verbose print verbose output
 Subcommands:
+  create     create a Nimby workspace in the current directory
   install    install all Nim packages in the current directory
   update     update all Nim packages in the current directory
   remove     remove all Nim packages in the current directory

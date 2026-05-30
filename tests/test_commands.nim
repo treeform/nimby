@@ -3,10 +3,10 @@ import testpackage
 
 let testWorkspace* = getTempDir() / "nimby_tests"
 
-proc cmd*(command: string): string {.discardable.} =
-  ## Runs a shell command in the test workspace, echoes output and returns it.
+proc cmdAt*(workingDir, command: string): string {.discardable.} =
+  ## Runs a shell command in a test directory, echoes output and returns it.
   echo "  > ", command
-  let (output, exitCode) = execCmdEx(command, workingDir = testWorkspace)
+  let (output, exitCode) = execCmdEx(command, workingDir = workingDir)
   result = output
   echo output.indent(4)
 
@@ -15,16 +15,49 @@ proc cmd*(command: string): string {.discardable.} =
 
   return output
 
+proc cmd*(command: string): string {.discardable.} =
+  ## Runs a shell command in the test workspace, echoes output and returns it.
+  cmdAt(testWorkspace, command)
+
+proc cmdFailAt*(workingDir, command: string): string {.discardable.} =
+  ## Runs a shell command that is expected to fail.
+  echo "  > ", command
+  let (output, exitCode) = execCmdEx(command, workingDir = workingDir)
+  result = output
+  echo output.indent(4)
+  check exitCode != 0
+
 proc branch(repo: string): string =
   cmd(&"git -C {repo} rev-parse --abbrev-ref HEAD").strip
 
 proc clean() =
   ## Resets the test workspace and global nimby directories.
+  setCurrentDir(getTempDir())
   removeDir(expandTilde("~/.nimby/nimbylock"))
   removeDir(expandTilde("~/.nimby/pkgs"))
   removeDir(testWorkspace)
   createDir(testWorkspace)
   setCurrentDir(testWorkspace)
+
+suite "`nimby create` should":
+  setup:
+    setupTestPackages()
+    clean()
+
+  test "create a workspace in the current directory":
+    cmd("nimby create")
+    check fileExists("nim.cfg")
+    check readFile("nim.cfg").contains("# Managed by Nimby")
+
+  test "create nested workspaces explicitly":
+    cmd("nimby create")
+    let nested = testWorkspace / "nested"
+    createDir(nested)
+
+    cmdAt(nested, "nimby create")
+
+    check fileExists(testWorkspace / "nim.cfg")
+    check fileExists(nested / "nim.cfg")
 
 suite "`nimby install` should":
   setup:
@@ -45,6 +78,40 @@ suite "`nimby install` should":
     createTestPackage("package")
     cmd(&"nimby install file://{testPackagesDir}/package")
     check dirExists("package")
+    check readFile("nim.cfg").contains("# Managed by Nimby")
+
+  test "use a parent workspace from nested directories":
+    cmd("nimby create")
+    createTestPackage("dependency")
+    let nested = testWorkspace / "nested"
+    createDir(nested)
+
+    cmdAt(nested, &"nimby install file://{testPackagesDir}/dependency")
+
+    check dirExists(testWorkspace / "dependency")
+    check not fileExists(nested / "nim.cfg")
+
+  test "refuse to auto-create inside Git checkouts":
+    createTestPackage("dependency")
+    let repo = testWorkspace / "repo"
+    createDir(repo)
+    createDir(repo / ".git")
+
+    let output = cmdFailAt(repo, &"nimby install file://{testPackagesDir}/dependency")
+
+    check output.contains("No Nimby workspace found")
+    check not fileExists(repo / "nim.cfg")
+
+  test "refuse to auto-create inside Nimble packages":
+    createTestPackage("dependency")
+    let package = testWorkspace / "package"
+    createDir(package)
+    writeFile(package / "package.nimble", "version = \"0.1.0\"\n")
+
+    let output = cmdFailAt(package, &"nimby install file://{testPackagesDir}/dependency")
+
+    check output.contains("No Nimby workspace found")
+    check not fileExists(package / "nim.cfg")
 
   test "work on https:// urls":
     cmd("nimby install https://github.com/treeform/nimbytestpackage.git")
@@ -116,7 +183,7 @@ suite "`nimby lock` should":
 
   test "include dependencies in the package with their corresponding URLs":
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
-    cmd("nimby lock nimbytestpackage > nimbytestpackage.lock")
+    writeFile("nimbytestpackage.lock", cmd("nimby lock nimbytestpackage"))
     check fileExists("nimbytestpackage.lock")
     let
       lockOut = readFile("nimbytestpackage.lock")
@@ -166,7 +233,7 @@ suite "`nimby update` should":
   test "update global packages with -g":
     cmd("nimby install -g https://github.com/RowDaBoat/nimbytestpackage.git")
     let
-      repoPath = "~/.nimby/pkgs/nimbytestpackage"
+      repoPath = expandTilde("~/.nimby/pkgs/nimbytestpackage")
       present = rewindPackage(repoPath, "HEAD^")
 
     cmd("nimby update nimbytestpackage")
@@ -178,7 +245,7 @@ suite "`nimby update` should":
     cmd("nimby install -g https://github.com/treeform/bitty.git")
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
     let
-      bittyPath = "~/.nimby/pkgs/bitty"
+      bittyPath = expandTilde("~/.nimby/pkgs/bitty")
       ntpPath = "nimbytestpackage"
       bittyPresent = rewindPackage(bittyPath, "HEAD^", "master")
       ntpPresent = rewindPackage(ntpPath, "HEAD^")

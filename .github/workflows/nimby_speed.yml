@@ -24,6 +24,9 @@ jobs:
       - name: Compile Nimby
         run: nim c -d:release src/nimby.nim
 
+      - name: Create Nimby Workspace
+        run: src/nimby create
+
       - name: Test Speed
         run: src/nimby install fidget2
 

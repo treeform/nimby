@@ -11,6 +11,9 @@ when defined(monkey):
 const
   WorkerCount = 4
   lockDir = "nimbylock"
+  workspaceFile = "nim.cfg"
+  workspaceMarker = "# Managed by Nimby"
+  legacyWorkspaceMarker = "# Created by Nimby"
 
 type
   NimbyError* = object of CatchableError
@@ -145,6 +148,73 @@ proc writeFileSafe(fileName: string, content: string) =
           sleep(100 * trying)
       raise newException(NimbyError, "error writing file `" & fileName & "`: " & getCurrentExceptionMsg())
 
+proc hasMarker(content: string): bool =
+  ## Check whether config text has a Nimby workspace marker.
+  for line in content.splitLines():
+    let stripped = line.strip()
+    if stripped == workspaceMarker or stripped == legacyWorkspaceMarker:
+      return true
+
+proc createWorkspace*(path: string = getCurrentDir(), announce = true) =
+  ## Create a Nimby workspace in exactly this directory.
+  let nimCfgPath = path / workspaceFile
+  if fileExists(nimCfgPath):
+    var nimCfg = readFileSafe(nimCfgPath)
+    if hasMarker(nimCfg):
+      if announce:
+        print &"Nimby workspace already exists: {path}"
+      return
+    if nimCfg.len > 0 and not nimCfg.endsWith("\n"):
+      nimCfg.add "\n"
+    writeFileSafe(nimCfgPath, workspaceMarker & "\n" & nimCfg)
+  else:
+    writeFileSafe(nimCfgPath, workspaceMarker & "\n")
+  if announce:
+    print &"Created Nimby workspace: {path}"
+
+proc containsNimbleFile(path: string): bool =
+  ## Check whether a directory contains a Nimble package file.
+  for kind, child in walkDir(path):
+    if kind == pcFile and child.endsWith(".nimble"):
+      return true
+
+proc findBoundary(startDir: string): string =
+  ## Find the nearest Git checkout or Nimble package directory.
+  var dir = startDir
+  while true:
+    if dirExists(dir / ".git") or containsNimbleFile(dir):
+      return dir
+    let parent = parentDir(dir)
+    if parent == "" or parent == dir:
+      return ""
+    dir = parent
+
+proc findWorkspace*(startDir: string = getCurrentDir(), autoCreate = true): string =
+  ## Find the nearest Nimby workspace, or create one when safe.
+  var dir = startDir
+  while true:
+    let nimCfgPath = dir / workspaceFile
+    if fileExists(nimCfgPath) and hasMarker(readFileSafe(nimCfgPath)):
+      return dir
+    let parent = parentDir(dir)
+    if parent == "" or parent == dir:
+      break
+    dir = parent
+
+  if not autoCreate:
+    nimbyQuit("No Nimby workspace found. Run `nimby create` in the directory you want as the workspace.")
+
+  let boundary = findBoundary(startDir)
+  if boundary != "":
+    nimbyQuit(
+      "No Nimby workspace found.\n" &
+      &"Refusing to create one inside package or Git checkout: {boundary}\n" &
+      "Run `nimby create` in the directory you want as the workspace."
+    )
+
+  createWorkspace(startDir, announce = false)
+  return startDir
+
 proc runOnce(command: string): string {.discardable.} =
   # Returns stdout
   let exeName = command.split(" ")[0]
@@ -209,6 +279,7 @@ proc writeHelp() =
   print "    -h, --help show this help message"
   print "    -V, --verbose print verbose output"
   print "Subcommands:"
+  print "  create     create a Nimby workspace in the current directory"
   print "  install    install all Nim packages in the current directory"
   print "  update     update all Nim packages in the current directory"
   print "  remove     remove all Nim packages in the current directory"
@@ -413,19 +484,19 @@ proc addConfigDir(path: string) =
   ## Add a directory to the nim.cfg file.
   withLock(jobLock):
     let path = path.replace("\\", "/") # Always use Linux-style paths.
-    if not fileExists("nim.cfg"):
-      writeFileSafe("nim.cfg", "# Created by Nimby\n")
-    var nimCfg = readFileSafe("nim.cfg")
+    if not fileExists(workspaceFile) or not hasMarker(readFileSafe(workspaceFile)):
+      createWorkspace(getCurrentDir(), announce = false)
+    var nimCfg = readFileSafe(workspaceFile)
     if nimCfg.contains(&"--path:\"{path}\""):
       return
     let line = &"--path:\"{path}\"\n"
     info &"Adding nim.cfg line: {line.strip()}"
     nimCfg.add(line)
-    writeFileSafe("nim.cfg", nimCfg)
+    writeFileSafe(workspaceFile, nimCfg)
 
 proc addConfigPackage(name: string) =
   ## Add a package to the nim.cfg file.
-  try: 
+  try:
     let package = getNimbleFile(name)
     addConfigDir(package.installDir / package.srcDir)
   except NimbleFileNotFound as e:
@@ -435,14 +506,14 @@ proc addConfigPackage(name: string) =
 proc removeConfigDir(path: string) =
   ## Remove a directory from the nim.cfg file.
   withLock(jobLock):
-    var nimCfg = readFileSafe("nim.cfg")
+    var nimCfg = readFileSafe(workspaceFile)
     var lines = nimCfg.splitLines()
     for i, line in lines:
       if line.contains(&"--path:\"{path}\""):
         lines.delete(i)
         break
     nimCfg = lines.join("\n")
-    writeFileSafe("nim.cfg", lines.join("\n"))
+    writeFileSafe(workspaceFile, lines.join("\n"))
 
 proc removeConfigPackage(name: string) =
   ## Remove the package from the nim.cfg file.
@@ -590,17 +661,47 @@ proc fetchPackage(argument: string) =
     else:
       nimbyQuit(&"Unknown method {methodKind} for fetching package {name}")
 
+proc normalizePathArgument(argument, startDir: string): string =
+  ## Preserve path arguments relative to the user's original directory.
+  if argument == "":
+    return argument
+  let candidate =
+    if argument.isAbsolute:
+      argument
+    else:
+      startDir / argument
+  if fileExists(candidate) or dirExists(candidate):
+    return candidate
+  argument
+
+proc prepareWorkspace() =
+  ## Move to the nearest Nimby workspace root.
+  setCurrentDir(findWorkspace(getCurrentDir()))
+
+proc prepareWorkspace(argument: string): string =
+  ## Move to the nearest Nimby workspace root and return a preserved path argument.
+  let startDir = getCurrentDir()
+  result = normalizePathArgument(argument, startDir)
+  setCurrentDir(findWorkspace(startDir))
+
 proc installPackage(argument: string) =
   ## Install a package.
-  timeStart()
-  print &"Installing package: {argument}"
+  let packageArg =
+    if argument.endsWith(".nimble"):
+      prepareWorkspace(argument)
+    else:
+      prepareWorkspace()
+      argument
 
-  if dirExists(argument):
+  timeStart()
+  print &"Installing package: {packageArg}"
+
+  if dirExists(packageArg):
     nimbyQuit("Package already installed.")
 
   # Ensure the packages index is available before workers start.
   # Enqueue the initial package.
-  enqueuePackage(argument)
+  enqueuePackage(packageArg)
 
   var threads: array[WorkerCount, Thread[int]]
   for i in 0 ..< WorkerCount:
@@ -631,6 +732,8 @@ proc updateSinglePackage(packageName: string) =
 
     nimbyQuit(noPackageMsg & updateAllMsg)
 
+  prepareWorkspace()
+
   let
     localPackage = packageName / packageName & ".nimble"
     globalPackage = getGlobalPackagesDir() / packageName / packageName & ".nimble"
@@ -659,6 +762,8 @@ proc walkPackages(path: string): seq[tuple[path: string, name: string]] =
 
 proc updateAllPackages() =
   ## Update all packages.
+  prepareWorkspace()
+
   var prompt =
     "This will update all packages, including global packages that affect " &
     "all workspaces.\nContinue?"
@@ -676,6 +781,7 @@ proc removePackage(argument: string) =
   ## Remove a package.
   if argument == "":
     nimbyQuit("No package specified for removal")
+  prepareWorkspace()
   info &"Removing package: {argument}"
   removeConfigPackage(argument)
   try:
@@ -703,6 +809,7 @@ proc listPackage(packageName: string) =
 
 proc listPackages(argument: string) =
   ## List all packages in the workspace.
+  prepareWorkspace()
   if argument != "":
     listPackage(argument)
   else:
@@ -726,6 +833,7 @@ proc treePackage(name, indent: string) =
 
 proc treePackages(argument: string) =
   ## Tree the package dependencies.
+  prepareWorkspace()
   if argument != "":
     treePackage(argument, "")
   else:
@@ -741,9 +849,9 @@ proc checkPackage(packageName: string) =
     for dependency in nimbleFile.dependencies:
       if not dirExists(dependency.name):
         print &"Dependency `{dependency.name}` not found for package `{packageName}`."
-    if not fileExists(&"nim.cfg"):
+    if not fileExists(workspaceFile):
       nimbyQuit(&"Package `nim.cfg` not found.")
-    let nimCfg = readFileSafe("nim.cfg")
+    let nimCfg = readFileSafe(workspaceFile)
     if not nimCfg.contains(&"--path:\"{packageName}/") and not nimCfg.contains(&"--path:\"{packageName}\""):
       print &"Package `{packageName}` not found in nim.cfg."
   except NimbleFileNotFound:
@@ -754,6 +862,7 @@ proc doctorPackage(argument: string) =
   # Walk through all packages.
   # Ensure the workspace root has a nim.cfg entry.
   # Ensure all dependencies are installed.
+  prepareWorkspace()
   if argument != "":
     if not dirExists(argument):
       nimbyQuit(&"Package `{argument}` not found.")
@@ -761,11 +870,11 @@ proc doctorPackage(argument: string) =
     checkPackage(packageName)
   else:
     var lines: seq[string]
-    if fileExists("nim.cfg"):
-      let cfg = readFile("nim.cfg")
+    if fileExists(workspaceFile):
+      let cfg = readFile(workspaceFile)
       lines = cfg.split('\n')
 
-    if lines.len == 0 or lines[0] != "# Created by Nimby":
+    if lines.len == 0 or not hasMarker(lines.join("\n")):
       nimbyQuit("Working dir is not a Nimby workspace")
 
     var packageNames: seq[string]
@@ -797,6 +906,7 @@ proc doctorPackage(argument: string) =
 
 proc lockPackage(packageName: string) =
   ## Generate a lock file for a package.
+  prepareWorkspace()
   try:
     var listedDeps = @[packageName]
 
@@ -821,13 +931,15 @@ proc lockPackage(packageName: string) =
 
 proc syncPackage(path: string) =
   ## Synchronize packages from a lock file.
-  info &"Syncing lock file: {path}"
+  let lockPath = prepareWorkspace(path)
+
+  info &"Syncing lock file: {lockPath}"
   timeStart()
 
-  if not fileExists(path):
-    nimbyQuit(&"Package lock file `{path}` not found.")
+  if not fileExists(lockPath):
+    nimbyQuit(&"Package lock file `{lockPath}` not found.")
 
-  for line in readFileSafe(path).splitLines():
+  for line in readFileSafe(lockPath).splitLines():
     let parts = line.split(" ")
     if parts.len != 4:
       continue
@@ -945,9 +1057,10 @@ proc installNim(nimVersion: string) =
 when isMainModule:
   writeVersion()
 
-  var subcommand, argument: string
-  var all = false
-  var p = initOptParser()
+  var
+    subcommand, argument: string
+    all = false
+    p = initOptParser()
   for kind, key, val in p.getopt():
     case kind
     of cmdArgument:
@@ -988,6 +1101,7 @@ when isMainModule:
   try:
     case subcommand
       of "": writeHelp()
+      of "create": createWorkspace()
       of "install": installPackage(argument)
       of "sync": syncPackage(argument)
       of "update":

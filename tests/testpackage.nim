@@ -61,7 +61,7 @@ requires "nim >= 2.0.0"
     &"git commit -m \"Initial commit for {name}\"",
   ]
 
-  for i in [1 ..< commits]:
+  for i in 1 ..< commits:
     commands.add &"git commit --allow-empty -m 'Commit {i}'"
 
   for command in commands:
