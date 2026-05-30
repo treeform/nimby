@@ -235,8 +235,7 @@ Installed package: silky
 You can install several packages in one command, with spaces or commas:
 
 ```sh skip
-nimby install libraryA libraryB libraryC
-nimby install libraryA, libraryB, libraryC
+nimby install taggy, orbits, stenography
 ```
 
 Global installs use `~/.nimby/pkgs` instead of the current workspace:
