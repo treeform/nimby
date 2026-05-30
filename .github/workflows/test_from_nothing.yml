@@ -80,9 +80,7 @@ jobs:
           echo "$HOME/.nimby/nim/bin" >> "$GITHUB_PATH"
 
       - name: Install Fidget2
-        run: |
-          nimby create
-          nimby install fidget2
+        run: nimby install fidget2
 
       - name: List Installed Nim packages
         run: nimby list
