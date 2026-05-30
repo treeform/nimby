@@ -11,11 +11,17 @@
 Nimby is the fastest and simplest way to install Nim packages.
 It keeps things honest, transparent, and lightning fast.
 
-Instead of magic, Nimby just uses git. It clones repositories directly into your workspace, reads their `.nimble` files, and installs dependencies in parallel. Everything is shallow cloned, HEAD by design, and written straight into your `nim.cfg`.
+## Quick Start
 
-You can also install globally with `-g` in `~/.nimby/pkgs` folder. Nimby can install the Nim compiler itself as well in the `~/.nimby/nim/bin` folder. With two commands you can download Nim and install all your packages, and be ready to build in seconds around 14 seconds.
-
----
+```sh
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Linux-X64
+chmod +x nimby
+./nimby use 2.2.10
+./nimby create
+./nimby install library
+./nimby lock library > library/nimby.lock
+./nimby sync library/nimby.lock
+```
 
 ## Why Nimby exists
 
@@ -36,7 +42,11 @@ After that, nimby grew form a few basic ideas:
 * Always grab `#HEAD`.
 * Do everything in parallel.
 
-## How to use:
+Instead of magic, Nimby just uses git. It clones repositories directly into your workspace, reads their `.nimble` files, and installs dependencies in parallel. Packages are shallow-cloned, checked out at HEAD by design, and written straight into your `nim.cfg`.
+
+You can also install globally with `-g` in the `~/.nimby/pkgs` folder. Nimby can install the Nim compiler itself into the `~/.nimby/nim/bin` folder. With two commands, you can download Nim, install all your packages, and be ready to build in about 14 seconds.
+
+## How to use
 
 * Create a workspace with `nimby create` in the folder where you want packages to live.
 * Install with `nimby install library` for development.
@@ -49,31 +59,31 @@ After that, nimby grew form a few basic ideas:
   ```
 * Crate a lock file with `nimby lock project > project/nimby.lock`.
   ```
-  libraryA 1.0.0 https://github.com/treeform/librar xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  libraryA 1.0.0 https://github.com/treeform/library xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   ```
-* During CI and deploy use lock `nimby sync project/nimby.lock`.
+* For CI and deploys, use the lock file with `nimby sync project/nimby.lock`.
   ```
   workspace/
     nim.cfg
     project/
-    library
+    library/
   ```
 
 ## Why always install HEAD?
 
-Well, the Nim community is small, and it doesn’t really have the packaging culture that other languages do. And that’s fine. In a way, it’s actually freeing!
+Well, the Nim community is small, and it doesn't really have the packaging culture that other languages do. And that's fine. In a way, it's actually freeing!
 
-But it also means that people rarely test older versions of packages against older versions of other packages. It's just boring thankless work after all.
+But it also means that people rarely test older versions of packages against older versions of other packages. It's boring, thankless work after all.
 
-This makes a lot of the version numbers in requirements you see in `.nimble` files don’t really reflect reality. They might claim that a version is supported, but in practice, no one tests the old stuff. And that’s okay. It’s just how the community works.
+Because of that, many version requirements in `.nimble` files don't really reflect reality. They might claim that a version is supported, but in practice, no one tests the old stuff. And that's okay. It's just how the community works.
 
 So Nimby follows the community approach and always checks out HEAD, because HEAD has the highest chance of working. Even if an API has changed, we now have AI tools that can help fix minor API changes.
 
 For development, installing from HEAD is the best way to move forward. It keeps everything current and in sync with how people actually develop Nim projects. It avoids diamond dependencies (where your package depends on A and B, but A and B depend on conflicting versions of C) and keeps things simple. I love simple things.
 
-But installing from HEAD is not good for CI, releases, or deployment to production. That’s where lock files come in. Since the development process relies on HEAD, lock files give you a way to record exactly what worked at a given moment in time for the deployment process.
+But installing from HEAD is not good for CI, releases, or deployment to production. That's where lock files come in. Since the development process relies on HEAD, lock files give you a way to record exactly what worked at a given moment in time for the deployment process.
 
-Generating a lock file is easy. Commit it along with your code, and when you need to reproduce a build, Nimby can install the exact dependencies and commits listed in that file just run `nimby sync repo/nimby.lock`. It's just a simple text file that lists package names, URLs, and commits.
+Generating a lock file is easy. Commit it along with your code. When you need to reproduce a build, just run `nimby sync repo/nimby.lock`; Nimby will install the exact dependencies and commits listed in that file. It's a simple text file that lists package names, URLs, and commits.
 
 ## What is the deal with the workspace folder?
 
