@@ -288,6 +288,7 @@ proc writeHelp() =
   print "  doctor     diagnose all packages and fix linking issues"
   print "  lock       generate a lock file for a package"
   print "  sync       synchronize packages from a lock file"
+  print "  use        install a Nim compiler version"
   print "  help       show this help message"
 
 proc isGitUrl*(candidate: string): bool =
