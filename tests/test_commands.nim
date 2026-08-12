@@ -63,6 +63,45 @@ suite "`nimby create` should":
     check fileExists(testWorkspace / "nim.cfg")
     check fileExists(nested / "nim.cfg")
 
+  test "succeed when run twice without duplicating the marker":
+    cmd("nimby create")
+    cmd("nimby create")
+    let content = readFile(testWorkspace / "nim.cfg")
+    check content.count("# Managed by Nimby") == 1
+
+  test "succeed explicitly inside a Git checkout":
+    let repo = testWorkspace / "repo"
+    createDir(repo)
+    createDir(repo / ".git")
+
+    cmdAt(repo, "nimby create")
+
+    check fileExists(repo / "nim.cfg")
+    check readFile(repo / "nim.cfg").contains("# Managed by Nimby")
+
+  test "succeed explicitly inside a Nimble package":
+    let package = testWorkspace / "package"
+    createDir(package)
+    writeFile(package / "package.nimble", "version = \"0.1.0\"\n")
+
+    cmdAt(package, "nimby create")
+
+    check fileExists(package / "nim.cfg")
+    check readFile(package / "nim.cfg").contains("# Managed by Nimby")
+
+  test "install into a nested workspace instead of parent":
+    cmd("nimby create")
+    let nested = testWorkspace / "nested"
+    createDir(nested)
+    cmdAt(nested, "nimby create")
+
+    createTestPackage("dependency")
+    cmdAt(nested, &"nimby install file://{testPackagesDir}/dependency")
+
+    check dirExists(nested / "dependency")
+    check not dirExists(testWorkspace / "dependency")
+    check readFile(nested / "nim.cfg").contains("dependency")
+
 suite "`nimby install` should":
   setup:
     setupTestPackages()
@@ -121,6 +160,22 @@ suite "`nimby install` should":
     let output = cmdFailAt(repo, &"nimby install file://{testPackagesDir}/dependency")
 
     check output.contains("No Nimby workspace found")
+    check output.contains("Refusing to create one inside package or Git checkout")
+    check not fileExists(repo / "nim.cfg")
+
+  test "refuse to auto-create inside a subdirectory of a Git checkout":
+    createTestPackage("dependency")
+    let repo = testWorkspace / "repo"
+    createDir(repo)
+    createDir(repo / ".git")
+    let subdir = repo / "src"
+    createDir(subdir)
+
+    let output = cmdFailAt(subdir, &"nimby install file://{testPackagesDir}/dependency")
+
+    check output.contains("No Nimby workspace found")
+    check output.contains("Refusing to create one inside package or Git checkout")
+    check not fileExists(subdir / "nim.cfg")
     check not fileExists(repo / "nim.cfg")
 
   test "refuse to auto-create inside Nimble packages":
@@ -132,6 +187,7 @@ suite "`nimby install` should":
     let output = cmdFailAt(package, &"nimby install file://{testPackagesDir}/dependency")
 
     check output.contains("No Nimby workspace found")
+    check output.contains("Refusing to create one inside package or Git checkout")
     check not fileExists(package / "nim.cfg")
 
   test "work on https:// urls":
