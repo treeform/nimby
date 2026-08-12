@@ -29,6 +29,7 @@ type
   NimbleFile* = ref object
     version*: string
     srcDir*: string
+    bin*: seq[string]
     installDir*: string
     nimDependency*: Dependency
     dependencies*: seq[Dependency]
@@ -279,17 +280,18 @@ proc writeHelp() =
   print "    -h, --help show this help message"
   print "    -V, --verbose print verbose output"
   print "Subcommands:"
-  print "  create     create a Nimby workspace in the current directory"
-  print "  install    install Nim packages into the current workspace"
-  print "  update     update all Nim packages in the current directory"
-  print "  remove     remove all Nim packages in the current directory"
-  print "  list       list all Nim packages in the current directory"
-  print "  tree       show all packages as a dependency tree"
-  print "  doctor     diagnose all packages and fix linking issues"
-  print "  lock       generate a lock file for a package"
-  print "  sync       synchronize packages from a lock file"
-  print "  use        install a Nim compiler version"
-  print "  help       show this help message"
+  print "  create        create a Nimby workspace in the current directory"
+  print "  install       install Nim packages into the current workspace"
+  print "  update        update all Nim packages in the current directory"
+  print "  remove        remove all Nim packages in the current directory"
+  print "  list          list all Nim packages in the current directory"
+  print "  tree          show all packages as a dependency tree"
+  print "  doctor        diagnose all packages and fix linking issues"
+  print "  lock          generate a lock file for a package"
+  print "  lock build    build a package after verifying locked dependencies"
+  print "  sync          synchronize packages from a lock file"
+  print "  use           install a Nim compiler version"
+  print "  help          show this help message"
 
 proc isGitUrl*(candidate: string): bool =
   ## Check if a string is a git URL.
@@ -326,6 +328,12 @@ proc parseNimbleFile*(fileName: string): NimbleFile =
       result.version = line.split(" ")[^1].strip().replace("\"", "")
     elif line.startsWith("srcDir"):
       result.srcDir = line.split(" ")[^1].strip().replace("\"", "")
+    elif line.startsWith("bin"):
+      let raw = line.split("=", 1)[^1].strip()
+      for item in raw.split(","):
+        let name = item.strip().replace("\"", "").replace("@[", "").replace("]", "")
+        if name != "":
+          result.bin.add(name)
     elif line.startsWith("requires"):
       var i = 9
       var dependency, op, version = ""
@@ -946,6 +954,52 @@ proc lockPackage(packageName: string) =
     let errorMessage = &"Can't generate a lock file for '{packageName}'.\n"
     nimbyQuit(errorMessage & e.msg)
 
+proc findNimbleFile(dir: string): string =
+  for kind, child in walkDir(dir):
+    if kind == pcFile and child.endsWith(".nimble"):
+      return child
+  return ""
+
+proc lockBuild() =
+  let dir = getCurrentDir()
+  let nimbleFilePath = findNimbleFile(dir)
+  if nimbleFilePath == "":
+    nimbyQuit("No .nimble file found in the current directory.")
+  let lockPath = dir / "nimby.lock"
+  if not fileExists(lockPath):
+    nimbyQuit("No nimby.lock file found in the current directory.")
+
+  let workspace = findWorkspace(dir, autoCreate = false)
+
+  for line in readFileSafe(lockPath).splitLines():
+    let parts = line.split(" ")
+    if parts.len != 4:
+      continue
+    let
+      packageName = parts[0]
+      expectedHash = parts[3]
+      packagePath = workspace / packageName
+    if not dirExists(packagePath):
+      nimbyQuit(&"Dependency `{packageName}` not found in workspace.")
+    if not isCleanRepo(packagePath):
+      nimbyQuit(&"Dependency `{packageName}` has uncommitted changes.")
+    let actualHash = runOnce(&"git -C {packagePath} rev-parse HEAD")
+    if actualHash != expectedHash:
+      nimbyQuit(&"Dependency `{packageName}` is not at the locked commit.")
+
+  let nimbleFile = parseNimbleFile(nimbleFilePath)
+  if nimbleFile.bin.len == 0:
+    nimbyQuit("No bin target found in .nimble file.")
+  let srcDir = if nimbleFile.srcDir != "": nimbleFile.srcDir else: "src"
+  let srcPath = dir / srcDir
+  if not dirExists(srcPath):
+    nimbyQuit(&"Source directory `{srcDir}` not found.")
+  let binName = nimbleFile.bin[0]
+  let binPath = dir / srcDir / binName & ".nim"
+  let output = runOnce(&"nim c {binPath}")
+  if output != "":
+    print output
+
 proc syncPackage(path: string) =
   ## Synchronize packages from a lock file.
   let lockPath = prepareWorkspace(path)
@@ -1131,7 +1185,11 @@ when isMainModule:
       of "remove", "uninstall": removePackage(argument)
       of "list": listPackages(argument)
       of "tree": treePackages(argument)
-      of "lock": lockPackage(argument)
+      of "lock":
+        if argument == "build":
+          lockBuild()
+        else:
+          lockPackage(argument)
       of "use": installNim(argument)
       of "doctor": doctorPackage(argument)
       of "help": writeHelp()

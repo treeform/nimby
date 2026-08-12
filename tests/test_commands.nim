@@ -278,6 +278,191 @@ suite "`nimby lock` should":
 
     check not actual.contains("nimbytestpackage")
 
+suite "`nimby lock build` should":
+  setup:
+    setupTestPackages()
+    clean()
+
+  test "fail when no .nimble file is present":
+    cmd("nimby create")
+    let output = cmdFail("nimby lock build")
+    check output.contains(".nimble")
+
+  test "fail when .nimble has no bin field":
+    cmd("nimby create")
+    createTestPackage("myapp")
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", "")
+
+    let output = cmdFailAt(testWorkspace / "myapp", "nimby lock build")
+    check output.contains("No bin target found")
+
+  test "build with default srcDir when .nimble omits it":
+    cmd("nimby create")
+    createTestPackage("myapp")
+
+    # Rewrite .nimble without srcDir but with bin
+    let nimblePath = testPackagesDir / "myapp" / "myapp.nimble"
+    writeFile(nimblePath, """
+# Package
+version       = "0.1.0"
+author        = "Test"
+description   = "Test"
+license       = "MIT"
+bin           = @["myapp"]
+
+# Dependencies
+requires "nim >= 2.0.0"
+""")
+    writeFile(testPackagesDir / "myapp" / "src" / "myapp.nim", "echo \"default_src\"\n")
+    let (_, _) = execCmdEx("git add -A && git commit -m 'no srcDir'",
+      workingDir = testPackagesDir / "myapp")
+
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", "")
+
+    cmdAt(testWorkspace / "myapp", "nimby lock build")
+
+  test "fail when srcDir does not exist":
+    cmd("nimby create")
+    createTestPackage("myapp")
+
+    # Set srcDir to a nonexistent directory
+    let nimblePath = testPackagesDir / "myapp" / "myapp.nimble"
+    writeFile(nimblePath, """
+# Package
+version       = "0.1.0"
+author        = "Test"
+description   = "Test"
+license       = "MIT"
+srcDir        = "missing"
+bin           = @["myapp"]
+
+# Dependencies
+requires "nim >= 2.0.0"
+""")
+    let (_, _) = execCmdEx("git add -A && git commit -m 'bad srcDir'",
+      workingDir = testPackagesDir / "myapp")
+
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", "")
+
+    let output = cmdFailAt(testWorkspace / "myapp", "nimby lock build")
+    check output.contains("missing")
+
+  test "fail when a dependency directory is missing":
+    cmd("nimby create")
+    createTestPackage("dep")
+    createTestPackage("myapp", requires = [&"file://{testPackagesDir}/dep"])
+
+    let nimblePath = testPackagesDir / "myapp" / "myapp.nimble"
+    var nimble = readFile(nimblePath)
+    nimble = nimble.replace("srcDir        = \"src\"", "srcDir        = \"src\"\nbin           = @[\"myapp\"]")
+    writeFile(nimblePath, nimble)
+    writeFile(testPackagesDir / "myapp" / "src" / "myapp.nim", "echo \"built\"\n")
+    let (_, _) = execCmdEx("git add -A && git commit -m 'add bin'",
+      workingDir = testPackagesDir / "myapp")
+
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", cmd("nimby lock myapp"))
+
+    # Remove the dependency from the workspace
+    removeDir(testWorkspace / "dep")
+
+    let output = cmdFailAt(testWorkspace / "myapp", "nimby lock build")
+    check output.contains("dep")
+    check output.contains("not found")
+
+  test "fail when no lock file is present":
+    cmd("nimby create")
+    createTestPackage("myapp")
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    let output = cmdFailAt(testWorkspace / "myapp", "nimby lock build")
+    check output.contains("nimby.lock")
+
+  test "fail when the build has a compilation error":
+    cmd("nimby create")
+    createTestPackage("myapp")
+
+    let nimblePath = testPackagesDir / "myapp" / "myapp.nimble"
+    var nimble = readFile(nimblePath)
+    nimble = nimble.replace("srcDir        = \"src\"", "srcDir        = \"src\"\nbin           = @[\"myapp\"]")
+    writeFile(nimblePath, nimble)
+    writeFile(testPackagesDir / "myapp" / "src" / "myapp.nim", "this is not valid nim\n")
+    let (_, _) = execCmdEx("git add -A && git commit -m 'broken source'",
+      workingDir = testPackagesDir / "myapp")
+
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", "")
+
+    let output = cmdFailAt(testWorkspace / "myapp", "nimby lock build")
+    check output.contains("error")
+
+  test "build successfully with an empty lock file":
+    cmd("nimby create")
+    createTestPackage("myapp")
+
+    let nimblePath = testPackagesDir / "myapp" / "myapp.nimble"
+    var nimble = readFile(nimblePath)
+    nimble = nimble.replace("srcDir        = \"src\"", "srcDir        = \"src\"\nbin           = @[\"myapp\"]")
+    writeFile(nimblePath, nimble)
+    writeFile(testPackagesDir / "myapp" / "src" / "myapp.nim", "echo \"no_deps\"\n")
+    let (_, _) = execCmdEx("git add -A && git commit -m 'add bin'",
+      workingDir = testPackagesDir / "myapp")
+
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", "")
+
+    cmdAt(testWorkspace / "myapp", "nimby lock build")
+
+  test "fail when a dependency is not at the locked commit":
+    cmd("nimby create")
+    createTestPackage("dep")
+    createTestPackage("myapp", requires = [&"file://{testPackagesDir}/dep"])
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", cmd("nimby lock myapp"))
+
+    # Advance dep past the locked commit
+    let (_, _) = execCmdEx(
+      "git commit --allow-empty -m 'advance'",
+      workingDir = testWorkspace / "dep"
+    )
+
+    let output = cmdFailAt(testWorkspace / "myapp", "nimby lock build")
+    check output.contains("dep")
+
+  test "fail when a dependency has uncommitted changes":
+    cmd("nimby create")
+    createTestPackage("dep")
+    createTestPackage("myapp", requires = [&"file://{testPackagesDir}/dep"])
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", cmd("nimby lock myapp"))
+
+    # Dirty the dep repo
+    writeFile(testWorkspace / "dep" / "dirty.txt", "uncommitted")
+
+    let output = cmdFailAt(testWorkspace / "myapp", "nimby lock build")
+    check output.contains("dep")
+
+  test "build the binary from srcDir and bin":
+    cmd("nimby create")
+    createTestPackage("dep")
+    createTestPackage("myapp", requires = [&"file://{testPackagesDir}/dep"])
+
+    # Add a bin field and a compilable main to the source package
+    let nimblePath = testPackagesDir / "myapp" / "myapp.nimble"
+    var nimble = readFile(nimblePath)
+    nimble = nimble.replace("srcDir        = \"src\"", "srcDir        = \"src\"\nbin           = @[\"myapp\"]")
+    writeFile(nimblePath, nimble)
+    writeFile(testPackagesDir / "myapp" / "src" / "myapp.nim", "echo \"built\"\n")
+    let (_, _) = execCmdEx("git add -A && git commit -m 'add bin'",
+      workingDir = testPackagesDir / "myapp")
+
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", cmd("nimby lock myapp"))
+
+    cmdAt(testWorkspace / "myapp", "nimby lock build")
+
 suite "`nimby update` should":
   setup:
     setupTestPackages()
