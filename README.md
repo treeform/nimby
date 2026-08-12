@@ -272,17 +272,18 @@ Usage: nimby <subcommand> [options]
     -h, --help show this help message
     -V, --verbose print verbose output
 Subcommands:
-  create     create a Nimby workspace in the current directory
-  install    install Nim packages into the current workspace
-  update     update all Nim packages in the current directory
-  remove     remove all Nim packages in the current directory
-  list       list all Nim packages in the current directory
-  tree       show all packages as a dependency tree
-  doctor     diagnose all packages and fix linking issues
-  lock       generate a lock file for a package
-  sync       synchronize packages from a lock file
-  use        install a Nim compiler version
-  help       show this help message
+  create        create a Nimby workspace in the current directory
+  install       install Nim packages into the current workspace
+  update        update all Nim packages in the current directory
+  remove        remove all Nim packages in the current directory
+  list          list all Nim packages in the current directory
+  tree          show all packages as a dependency tree
+  doctor        diagnose all packages and fix linking issues
+  lock          generate a lock file for a package
+  lock build    build a package after verifying locked dependencies
+  sync          synchronize packages from a lock file
+  use           install a Nim compiler version
+  help          show this help message
 ```
 
 ## Working with lock files
