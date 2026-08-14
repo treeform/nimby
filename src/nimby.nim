@@ -279,19 +279,26 @@ proc writeHelp() =
   print "    -v, --version print the version of Nimby"
   print "    -h, --help show this help message"
   print "    -V, --verbose print verbose output"
-  print "Subcommands:"
-  print "  create        create a Nimby workspace in the current directory"
-  print "  install       install Nim packages into the current workspace"
-  print "  update        update all Nim packages in the current directory"
-  print "  remove        remove all Nim packages in the current directory"
-  print "  list          list all Nim packages in the current directory"
-  print "  tree          show all packages as a dependency tree"
-  print "  doctor        diagnose all packages and fix linking issues"
-  print "  lock          generate a lock file for a package"
-  print "  lock build    build a package after verifying locked dependencies"
-  print "  sync          synchronize packages from a lock file"
-  print "  use           install a Nim compiler version"
-  print "  help          show this help message"
+  print "Package subcommands:"
+  print "  create     create a Nimby workspace in the current directory"
+  print "  install    install Nim packages into the current workspace"
+  print "  update     update all Nim packages in the current directory"
+  print "  remove     remove all Nim packages in the current directory"
+  print "  list       list all Nim packages in the current directory"
+  print "  tree       show all packages as a dependency tree"
+  print "  doctor     diagnose all packages and fix linking issues"
+  print "  lock       generate a lock file for a package"
+  print "  sync       synchronize packages from a lock file"
+  print "  use        install a Nim compiler version"
+  print "  help       show this help message"
+  print "Compiler subcommands:"
+  print "  All verify packages are locked, then forward arguments to nim."
+  print "  c          compile project to C code"
+  print "  cpp        compile project to C++ code"
+  print "  js         compile project to Javascript"
+  print "  e          run a Nimscript file"
+  print "  doc        generate the documentation for inputfile"
+  print "  check      checks the project for syntax and semantics"
 
 proc isGitUrl*(candidate: string): bool =
   ## Check if a string is a git URL.
@@ -954,17 +961,8 @@ proc lockPackage(packageName: string) =
     let errorMessage = &"Can't generate a lock file for '{packageName}'.\n"
     nimbyQuit(errorMessage & e.msg)
 
-proc findNimbleFile(dir: string): string =
-  for kind, child in walkDir(dir):
-    if kind == pcFile and child.endsWith(".nimble"):
-      return child
-  return ""
-
-proc lockBuild() =
+proc verifyAndRun(nimCommand: string, arguments: seq[string]) =
   let dir = getCurrentDir()
-  let nimbleFilePath = findNimbleFile(dir)
-  if nimbleFilePath == "":
-    nimbyQuit("No .nimble file found in the current directory.")
   let lockPath = dir / "nimby.lock"
   if not fileExists(lockPath):
     nimbyQuit("No nimby.lock file found in the current directory.")
@@ -987,16 +985,8 @@ proc lockBuild() =
     if actualHash != expectedHash:
       nimbyQuit(&"Dependency `{packageName}` is not at the locked commit.")
 
-  let nimbleFile = parseNimbleFile(nimbleFilePath)
-  if nimbleFile.bin.len == 0:
-    nimbyQuit("No bin target found in .nimble file.")
-  let srcDir = if nimbleFile.srcDir != "": nimbleFile.srcDir else: "src"
-  let srcPath = dir / srcDir
-  if not dirExists(srcPath):
-    nimbyQuit(&"Source directory `{srcDir}` not found.")
-  let binName = nimbleFile.bin[0]
-  let binPath = dir / srcDir / binName & ".nim"
-  let output = runOnce(&"nim c {binPath}")
+  let nimArgs = arguments.join(" ")
+  let output = runOnce(&"nim {nimCommand} {nimArgs}")
   if output != "":
     print output
 
@@ -1133,40 +1123,46 @@ when isMainModule:
     arguments: seq[string]
     all = false
     p = initOptParser()
-  for kind, key, val in p.getopt():
-    case kind
-    of cmdArgument:
-      if subcommand == "":
-        subcommand = key
-      else:
-        argument = key
-        arguments.add(key)
-    of cmdLongOption, cmdShortOption:
-      case key
-      of "help", "h":
-        writeHelp()
-        quit(0)
-      of "version", "v":
-        quit(0)
-      of "verbose", "V":
-        verbose = true
-      of "global", "g":
-        print "Using global packages directory."
-        global = true
-        if not dirExists(getGlobalPackagesDir()):
-          info &"Creating global packages directory: {getGlobalPackagesDir()}"
-          createDir(getGlobalPackagesDir())
-      of "source", "s":
-        source = true
-      of "all", "a":
-        all = true
-      of "yes", "y":
-        yes = true
-      else:
-        print "Unknown option: " & key
-        quit(1)
-    of cmdEnd:
-      assert(false) # cannot happen
+  let params = commandLineParams()
+  const nimCommands = ["c", "cpp", "js", "e", "doc", "check"]
+  if params.len > 0 and params[0] in nimCommands:
+    subcommand = params[0]
+    arguments = params[1..^1]
+  else:
+    for kind, key, val in p.getopt():
+      case kind
+      of cmdArgument:
+        if subcommand == "":
+          subcommand = key
+        else:
+          argument = key
+          arguments.add(key)
+      of cmdLongOption, cmdShortOption:
+        case key
+        of "help", "h":
+          writeHelp()
+          quit(0)
+        of "version", "v":
+          quit(0)
+        of "verbose", "V":
+          verbose = true
+        of "global", "g":
+          print "Using global packages directory."
+          global = true
+          if not dirExists(getGlobalPackagesDir()):
+            info &"Creating global packages directory: {getGlobalPackagesDir()}"
+            createDir(getGlobalPackagesDir())
+        of "source", "s":
+          source = true
+        of "all", "a":
+          all = true
+        of "yes", "y":
+          yes = true
+        else:
+          print "Unknown option: " & key
+          quit(1)
+      of cmdEnd:
+        assert(false) # cannot happen
 
   if not acquireGlobalLock():
     quit("Nimby is already running, delete ~/.nimby/nimbylock to release lock")
@@ -1185,11 +1181,8 @@ when isMainModule:
       of "remove", "uninstall": removePackage(argument)
       of "list": listPackages(argument)
       of "tree": treePackages(argument)
-      of "lock":
-        if argument == "build":
-          lockBuild()
-        else:
-          lockPackage(argument)
+      of "c", "cpp", "js", "e", "doc", "check": verifyAndRun(subcommand, arguments)
+      of "lock": lockPackage(argument)
       of "use": installNim(argument)
       of "doctor": doctorPackage(argument)
       of "help": writeHelp()
