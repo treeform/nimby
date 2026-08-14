@@ -30,5 +30,8 @@ jobs:
       - name: Run Nimby Unit Tests
         run: nim r tests/test_parsing.nim
 
+      - name: Test isolated Git configuration
+        run: nim r tests/test_gitconfig.nim
+
       - name: Run Nimby Functional Tests
         run: nim r tests/test_commands.nim
