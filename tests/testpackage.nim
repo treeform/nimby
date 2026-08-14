@@ -1,24 +1,26 @@
 import std/[os, osproc, sequtils, strutils, strformat]
 
+const GitCommit =
+  "git -c user.name=Tests -c user.email=git@tests.com commit"
+
 let testPackagesDir* = getTempDir() / "nimby_tests" / "packages"
 
 proc setupTestPackages*() =
+  ## Rewrites SSH URLs for Git child processes on CI.
   if not existsEnv("CI"):
     return
 
-  ## Configures git with test credentials and rewrites SSH URLs to HTTPS on CI.
-  var commands = @[
-    "git config --global user.email git@tests.com",
-    "git config --global user.name 'Tests'",
-    "git config --global --replace-all url.\"https://github.com/\".insteadOf \"ssh://git@github.com/\"",
-    "git config --global --add url.\"https://github.com/\".insteadOf \"git+ssh://git@github.com/\"",
-    "git config --global --add url.\"https://github.com/\".insteadOf \"git@github.com:\""
-  ]
-
-  for command in commands:
-    let (output, exitCode) = execCmdEx(command)
-    if exitCode != 0:
-      raise newException(Exception, &"Failed to set configure git:\n{command}\n{output}")
+  putEnv("GIT_CONFIG_COUNT", "3")
+  for i, url in [
+    "ssh://git@github.com/",
+    "git+ssh://git@github.com/",
+    "git@github.com:"
+  ]:
+    putEnv(
+      &"GIT_CONFIG_KEY_{i}",
+      "url.https://github.com/.insteadOf"
+    )
+    putEnv(&"GIT_CONFIG_VALUE_{i}", url)
 
 proc createTestPackage*(
   name: string,
@@ -58,11 +60,11 @@ requires "nim >= 2.0.0"
     "git init",
     &"git checkout -b {branch}",
     "git add -A",
-    &"git commit -m \"Initial commit for {name}\"",
+    &"{GitCommit} -m \"Initial commit for {name}\"",
   ]
 
   for i in [1 ..< commits]:
-    commands.add &"git commit --allow-empty -m 'Commit {i}'"
+    commands.add &"{GitCommit} --allow-empty -m 'Commit {i}'"
 
   for command in commands:
     let (output, exitCode) = execCmdEx(command, workingDir = packageDir)
@@ -73,7 +75,7 @@ proc addSubmodule*(repository: string, url: string) =
   ## Adds a git submodule at the given URL to the repository and commits it.
   let commands = [
     &"git -c protocol.file.allow=always submodule add {url}",
-    "git commit -m \"Add submodule\"",
+    &"{GitCommit} -m \"Add submodule\"",
   ]
 
   for command in commands:
