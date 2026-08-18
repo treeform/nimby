@@ -1,6 +1,6 @@
 import std/[os, osproc, sequtils, strutils, strformat]
 
-const GitCommit =
+const GitCommit* =
   "git -c user.name=Tests -c user.email=git@tests.com commit"
 
 let testPackagesDir* = getTempDir() / "nimby_tests" / "packages"
