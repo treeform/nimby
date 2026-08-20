@@ -4,52 +4,102 @@
 
 `nimble install nimby`
 
-![Github Actions](https://github.com/treeform/nimby/workflows/Github%20Actions/badge.svg)
+![GitHub Actions](https://github.com/treeform/nimby/workflows/Github%20Actions/badge.svg)
 
 [API reference](https://treeform.github.io/nimby)
 
 Nimby is the fastest and simplest way to install Nim packages.
 It keeps things honest, transparent, and lightning fast.
 
-Instead of magic, Nimby just uses git. It clones repositories directly into your workspace, reads their `.nimble` files, and installs dependencies in parallel. Everything is shallow cloned, HEAD by design, and written straight into your `nim.cfg`.
+## Quick Start
 
-You can also install globally with `-g` in `~/.nimby/pkgs` folder. Nimby can install the Nim compiler itself as well in the `~/.nimby/nim/bin` folder. With two commands you can download Nim and install all your packages, and be ready to build in seconds around 14 seconds.
-
----
+```sh skip
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Linux-X64
+chmod +x nimby
+./nimby use 2.2.10
+./nimby create
+./nimby install libraryA libraryB libraryC
+./nimby lock library > library/nimby.lock
+./nimby sync library/nimby.lock
+```
 
 ## Why Nimby exists
 
 When I added Nim to our company CI, our builds suddenly became very slow. Nimble installs took almost two minutes for Fidget2. That felt wrong, so I started digging.
 
-I tried replacing Nimble with a few simple shell scripts that just cloned the repos with git. It built fine, and was way way faster! 2 minutes vs 3 seconds faster.
+I tried replacing Nimble with a few simple shell scripts that just cloned the repos with git. It built fine, and was way, way faster! So then I wrote Nimby as a tool to clone everything in parallel:
 
-So Nimby started from a simple idea: download Nim packages from git, do not resolve dependencies, and in parallel.
+* Nimble: 2 minutes
+* Nimby: 3 seconds
+
+At its core, Nimby runs `git clone` and updates `nim.cfg` in the workspace folder.
+
+After that, Nimby grew from a few basic ideas:
+
+* Have a single workspace folder.
+* Download Nim packages using git.
+* Do not resolve dependencies.
+* Always grab `#HEAD`.
+* Do everything in parallel.
+
+Instead of magic, Nimby just uses git. It clones repositories directly into your workspace, reads their `.nimble` files, and installs dependencies in parallel. Packages are shallow-cloned and checked out at HEAD by design, and their paths are written straight into your `nim.cfg`.
+
+You can also install globally with `-g` in the `~/.nimby/pkgs` folder. Nimby can install the Nim compiler itself into the `~/.nimby/nim/bin` folder. With two commands, you can download Nim, install all your packages, and be ready to build in about 14 seconds.
+
+## How to use
+
+* Create a workspace with `nimby create` in the folder where you want packages to live.
+* Install with `nimby install libraryA libraryB libraryC` for development.
+* Keep your project alongside its dependencies in the workspace.
+  ```
+  workspace/
+    nim.cfg
+    project/
+    libraryA/
+    libraryB/
+    libraryC/
+  ```
+* Create a lock file with `nimby lock project > project/nimby.lock`.
+  ```
+  libraryA 1.0.0 https://github.com/treeform/libraryA xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  libraryB 1.0.0 https://github.com/treeform/libraryB xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  libraryC 1.0.0 https://github.com/treeform/libraryC xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  ```
+* For CI and deployments, use the lock file with `nimby sync project/nimby.lock`.
+  ```
+  workspace/
+    nim.cfg
+    project/
+    libraryA/
+    libraryB/
+    libraryC/
+  ```
 
 ## Why always install HEAD?
 
-Well, the Nim community is small, and it doesn’t really have the packaging culture that other languages do. And that’s fine. In a way, it’s actually freeing!
+Well, the Nim community is small, and it doesn't really have the packaging culture that other languages do. And that's fine. In a way, it's actually freeing!
 
-But it also means that people rarely test older versions of packages against older versions of other packages. It's just boring thankless work after all.
+But it also means that people rarely test older versions of packages against older versions of other packages. It's boring, thankless work, after all.
 
-This makes a lot of the version numbers in requirements you see in `.nimble` files don’t really reflect reality. They might claim that a version is supported, but in practice, no one tests the old stuff. And that’s okay. It’s just how the community works.
+Because of that, many version requirements in `.nimble` files don't really reflect reality. They might claim that a version is supported, but in practice, no one tests the old stuff. And that's okay. It's just how the community works.
 
 So Nimby follows the community approach and always checks out HEAD, because HEAD has the highest chance of working. Even if an API has changed, we now have AI tools that can help fix minor API changes.
 
 For development, installing from HEAD is the best way to move forward. It keeps everything current and in sync with how people actually develop Nim projects. It avoids diamond dependencies (where your package depends on A and B, but A and B depend on conflicting versions of C) and keeps things simple. I love simple things.
 
-But installing from HEAD is not good for CI, releases, or deployment to production. That’s where lock files come in. Since the community relies on HEAD, lock files give you a way to record exactly what worked at a given moment in time.
+But installing from HEAD is not good for CI, releases, or deployment to production. That's where lock files come in. Since the development process relies on HEAD, lock files give you a way to record exactly what worked at a given moment in time for deployment.
 
-Generating a lock file is easy. Commit it along with your code, and when you need to reproduce a build, Nimby can install the exact dependencies and commits listed in that file. It's just a simple text file that lists package names, URLs, and commits.
-
-So the model is simple: use HEAD (`nimby install`) for development, and use lock files for deployment (`nimby sync`). It’s the best of both worlds.
-It's a simple text file that lists package names, URLs, and commits.
-
+Generating a lock file is easy. Commit it along with your code. When you need to reproduce a build, just run `nimby sync repo/nimby.lock`; Nimby will install the exact dependencies and commits listed in that file. It's a simple text file that lists package names, URLs, and commits.
 
 ## What is the deal with the workspace folder?
 
-You always should run `nimby` commands from the workspace folder just like you would with `git clone`. It's not wrong to think of nimby like a `git clone` with extra steps.
+Create a workspace with `nimby create` in the folder where you want packages to live.
+After that, you can run commands from inside any package or subdirectory and Nimby will walk upward until it finds that workspace.
+If no workspace exists, Nimby will only create one automatically in plain directories.
+Inside a Git checkout or a Nimble package, it stops and asks you to run `nimby create` in the directory you really want as the workspace.
 
-I think the workspace folder is great. The way I have things set up, there’s a single Nim config file, and all the packages I’m working on live together as simple git checkouts.
+I think the workspace folder is great. The way I have things set up, there's a single Nim config file, and all the packages I'm working on live together as simple git checkouts.
+
 Alongside them, I also keep clones of all the dependencies I use. Everything lives in one place:
 
 ```
@@ -63,23 +113,23 @@ workspace/
   ..
 ```
 
-This makes it much easier to move around and explore the code base. If I’m developing something and want to see what a function does inside one of the dependencies, I can just open it right there. No hunting through hidden directories or special paths.
+This makes it much easier to move around and explore the codebase. If I'm developing something and want to see what a function does inside one of the dependencies, I can just open it right there. No hunting through hidden directories or special paths.
 
 It also helps modern AI tools. Since everything sits in one folder, they can read and understand the source code of all your dependencies at once, giving you better suggestions and context.
 
 I never liked it when packages get installed into hidden folders deep in your home directory, or when they end up scattered inside things like `deps` or `nim_modules`. It feels messy. I like everything to be clean and simple, and having all your checkouts in one visible folder is the simplest way I can think of.
 
-Not everyone develops like this, though. Sometimes you just need a tool globally and don’t want it sitting in your workspace. That’s why I added the `-g` or `--global` flag. It installs packages in a global Nimby folder `~/.nimby/pkgs` instead of the local workspace. This is especially handy for CI setups or for people who only need to use packages, not develop them.
+Not everyone develops like this, though. Sometimes you just need a tool globally and don't want it sitting in your workspace. That's why I added the `-g` or `--global` flag. It installs packages in the global Nimby folder, `~/.nimby/pkgs`, instead of the local workspace. This is especially handy for CI setups or for people who only need to use packages, not develop them.
 
-The global option works for both `nimby install -g` and even more importantly `nimby sync -g` when you’re working with lock files. That’s really all there is to it.
+The global option works for both `nimby install -g` and, even more importantly, `nimby sync -g` when you're working with lock files. That's really all there is to it.
 
 ## What? It also installs Nim itself?
 
-Yeah, installing Nim is actually pretty easy. You just copy a couple of folders, put them in the right place, and add `~/.nimby/nim/bin` to your system path. That’s it.
+Yeah, installing Nim is actually pretty easy. You just copy a couple of folders, put them in the right place, and add `~/.nimby/nim/bin` to your system path. That's it.
 
-I think it’s a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system `curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Linux-X64`, and that’s all you need. Then you run `./nimby use 2.2.10` with the Nim version you want, and `./nimby install your/nimby.lock` with your lock file.
+I think it's a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system, `curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.1.27/nimby-Linux-X64`, and that's all you need. Then you run `./nimby use 2.2.10` with the Nim version you want, and `./nimby sync your/nimby.lock` with your lock file.
 
-This works perfectly for CI workflows, deployments, or any situation where you’re starting with a blank machine. You don’t need to install anything else. Nimby downloads Nim, installs your packages, and you’re ready to go.
+This works perfectly for CI workflows, deployments, or any situation where you're starting with a blank machine. You don't need to install anything else. Nimby downloads Nim, installs your packages, and you're ready to go.
 
 ---
 
@@ -123,6 +173,9 @@ Nimby can install Nim itself into `~/.nimby/nim`:
 ```sh skip
 nimby use 2.2.10
 ```
+
+`nimby use <version>` downloads that Nim version and makes it the active Nim
+compiler under `~/.nimby/nim`.
 
 After that, add Nim's bin directory to `PATH`.
 
@@ -179,6 +232,12 @@ Installing package: silky
 Installed package: silky
 ```
 
+You can install several packages in one command, with spaces or commas:
+
+```sh skip
+nimby install taggy, orbits, stenography
+```
+
 Global installs use `~/.nimby/pkgs` instead of the current workspace:
 
 ```sh skip
@@ -212,8 +271,9 @@ Usage: nimby <subcommand> [options]
     -v, --version print the version of Nimby
     -h, --help show this help message
     -V, --verbose print verbose output
-Subcommands:
-  install    install all Nim packages in the current directory
+Package subcommands:
+  create     create a Nimby workspace in the current directory
+  install    install Nim packages into the current workspace
   update     update all Nim packages in the current directory
   remove     remove all Nim packages in the current directory
   list       list all Nim packages in the current directory
@@ -221,7 +281,16 @@ Subcommands:
   doctor     diagnose all packages and fix linking issues
   lock       generate a lock file for a package
   sync       synchronize packages from a lock file
+  use        install a Nim compiler version
   help       show this help message
+Compiler subcommands:
+  All verify packages are locked, then forward arguments to nim.
+  c          compile project to C code
+  cpp        compile project to C++ code
+  js         compile project to Javascript
+  e          run a Nimscript file
+  doc        generate the documentation for inputfile
+  check      checks the project for syntax and semantics
 ```
 
 ## Working with lock files
@@ -247,6 +316,7 @@ Install from a lock file:
 mkdir synced
 cp nimby.lock synced/
 cd synced
+nimby create >/dev/null
 nimby sync nimby.lock 2>&1 | sed -n '/^Installed package: chroma$/p'
 ```
 
@@ -277,8 +347,8 @@ nimby update silky 2>&1 | sed -n '/^Updated package: silky$/p'
 Updated package: silky
 ```
 
-`update --all` updates both workspace and global packages. It asks before doing
-that, so use `-y` only when the command is already intentional:
+`update --all` updates both workspace and global packages. It prompts first, so
+use `-y` only when the command is already intentional:
 
 ```sh
 nimby update --all -y >/dev/null && echo "Updated all packages"
@@ -309,7 +379,7 @@ nimby sync -g nimby.lock 2>&1 | sed -n '/^Installed package: chroma$/p'
 Installed package: chroma
 ```
 
-This is similar to how Cargo, npm, and other package managers use lock files, but kept as simple text that lists package names, URLs, and commits.
+This is similar to how Cargo, npm, and other package managers use lock files, but it is kept as a simple text file that lists package names, URLs, and commits.
 
 ---
 

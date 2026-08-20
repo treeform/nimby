@@ -30,6 +30,9 @@ jobs:
       - name: Compile Nimby
         run: nim c -d:release -d:monkey src/nimby.nim
 
+      - name: Create Nimby Workspace
+        run: src/nimby create
+
       - name: Boxy
         run: git clone --depth 1 https://github.com/treeform/boxy.git
 
