@@ -134,6 +134,16 @@ suite "`nimby install` should":
     check not dirExists("mummy")
     check dirExists(expandTilde("~/.nimby/pkgs/mummy"))
 
+  test "install globally without a workspace inside a Git checkout":
+    let repo = testWorkspace / "repo"
+    createDir(repo)
+    createDir(repo / ".git")
+
+    cmdAt(repo, "nimby install -g -V mummy")
+
+    check dirExists(expandTilde("~/.nimby/pkgs/mummy"))
+    check not fileExists(repo / "nim.cfg")
+
   test "work on file:// urls":
     createTestPackage("package")
     cmd(&"nimby install file://{testPackagesDir}/package")

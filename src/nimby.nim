@@ -498,6 +498,8 @@ proc worker(id: int) {.thread.} =
 
 proc addConfigDir(path: string) =
   ## Add a directory to the nim.cfg file.
+  if global:
+    return
   withLock(jobLock):
     let path = path.replace("\\", "/") # Always use Linux-style paths.
     if not fileExists(workspaceFile) or not hasMarker(readFileSafe(workspaceFile)):
@@ -724,7 +726,8 @@ proc installPackages(arguments: seq[string]) =
     if packageArg.endsWith(".nimble"):
       packageArg = normalizePathArgument(packageArg, startDir)
 
-  setCurrentDir(findWorkspace(startDir))
+  if not global:
+    setCurrentDir(findWorkspace(startDir))
   timeStart()
 
   for packageArg in packageArgs:
@@ -992,7 +995,11 @@ proc verifyAndRun(nimCommand: string, arguments: seq[string]) =
 
 proc syncPackage(path: string) =
   ## Synchronize packages from a lock file.
-  let lockPath = prepareWorkspace(path)
+  let lockPath =
+    if global:
+      path
+    else:
+      prepareWorkspace(path)
 
   info &"Syncing lock file: {lockPath}"
   timeStart()
