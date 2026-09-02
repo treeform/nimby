@@ -2,6 +2,7 @@ import std/[os, osproc, strutils, sequtils, tables, strformat, unittest]
 import testpackage
 
 let testWorkspace* = getTempDir() / "nimby_tests"
+let nimbyHome* = getTempDir() / "nimby_home"
 
 proc cmdAt*(workingDir, command: string): string {.discardable.} =
   ## Runs a shell command in a test directory, echoes output and returns it.
@@ -34,19 +35,40 @@ proc cmdFail*(command: string): string {.discardable.} =
 proc branch(repo: string): string =
   cmd(&"git -C {repo} rev-parse --abbrev-ref HEAD").strip
 
-proc clean() =
-  ## Resets the test workspace and global nimby directories.
+proc setupEnvironment(installNim: bool = true) =
   setCurrentDir(getTempDir())
-  removeDir(expandTilde("~/.nimby/nimbylock"))
-  removeDir(expandTilde("~/.nimby/pkgs"))
+  removeDir(nimbyHome / "nimbylock")
+  removeDir(nimbyHome / "pkgs")
+  putEnv("NIMBY_HOME", nimbyHome)
+  if installNim:
+    cmd("nimby use 2.2.10")
   removeDir(testWorkspace)
   createDir(testWorkspace)
   setCurrentDir(testWorkspace)
 
+suite "`nimby use` should":
+  setup:
+    setupTestPackages()
+    setupEnvironment(installNim = false)
+
+  test "install nim into NIMBY_HOME":
+    cmd("nimby use 2.2.10")
+    check fileExists(nimbyHome / "nim" / "bin" / addFileExt("nim", ExeExt))
+
+  test "fail when nim is not installed":
+    removeDir(nimbyHome / "nim")
+    cmd("nimby create")
+    createTestPackage("myapp")
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", "")
+    let output = cmdFailAt(testWorkspace / "myapp", "nimby c src/myapp.nim")
+    check output.contains("Nim is not installed")
+    check output.contains("nimby use")
+
 suite "`nimby create` should":
   setup:
     setupTestPackages()
-    clean()
+    setupEnvironment()
 
   test "create a workspace in the current directory":
     cmd("nimby create")
@@ -105,7 +127,7 @@ suite "`nimby create` should":
 suite "`nimby install` should":
   setup:
     setupTestPackages()
-    clean()
+    setupEnvironment()
 
   test "require a package argument":
     let output = cmdFail("nimby install")
@@ -132,7 +154,17 @@ suite "`nimby install` should":
   test "create the package globally when used with `-g`":
     cmd("nimby install -g -V mummy")
     check not dirExists("mummy")
-    check dirExists(expandTilde("~/.nimby/pkgs/mummy"))
+    check dirExists(nimbyHome / "pkgs" / "mummy")
+
+  test "install globally when NIMBY_HOME has spaces":
+    let spacedHome = getTempDir() / "nimby home with spaces"
+    removeDir(spacedHome)
+    putEnv("NIMBY_HOME", spacedHome)
+    cmd("nimby use 2.2.10")
+    cmd("nimby install -g -V mummy")
+    check dirExists(spacedHome / "pkgs" / "mummy")
+    removeDir(spacedHome)
+    putEnv("NIMBY_HOME", nimbyHome)
 
   test "record the global package in the workspace nim.cfg":
     cmd("nimby install -g mummy")
@@ -273,7 +305,7 @@ suite "`nimby install` should":
 suite "`nimby lock` should":
   setup:
     setupTestPackages()
-    clean()
+    setupEnvironment()
 
   test "include dependencies in the package with their corresponding URLs":
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
@@ -295,10 +327,11 @@ suite "`nimby lock` should":
 
     check not actual.contains("nimbytestpackage")
 
+
 suite "`nimby c` should":
   setup:
     setupTestPackages()
-    clean()
+    setupEnvironment()
 
   test "fail when no lock file is present":
     cmd("nimby create")
@@ -387,6 +420,20 @@ suite "`nimby c` should":
 
     cmdAt(testWorkspace / "myapp", "nimby c -d:release src/myapp.nim")
 
+  test "compile when NIMBY_HOME has spaces":
+    let spacedHome = getTempDir() / "nimby home with spaces"
+    removeDir(spacedHome)
+    putEnv("NIMBY_HOME", spacedHome)
+    cmd("nimby use 2.2.10")
+    cmd("nimby create")
+    createTestPackage("myapp")
+    cmd(&"nimby install file://{testPackagesDir}/myapp")
+    writeFile(testWorkspace / "myapp" / "nimby.lock", "")
+
+    cmdAt(testWorkspace / "myapp", "nimby c src/myapp.nim")
+    removeDir(spacedHome)
+    putEnv("NIMBY_HOME", nimbyHome)
+
   test "dispatch cpp, js, doc, and check to nim":
     cmd("nimby create")
     createTestPackage("myapp")
@@ -401,7 +448,7 @@ suite "`nimby c` should":
 suite "`nimby update` should":
   setup:
     setupTestPackages()
-    clean()
+    setupEnvironment()
   proc getCommit(repo: string): string =
     ## Returns the current HEAD commit hash for the given repo.
     cmd(&"git -C {repo} rev-parse HEAD").strip
@@ -430,7 +477,7 @@ suite "`nimby update` should":
   test "update global packages with -g":
     cmd("nimby install -g https://github.com/RowDaBoat/nimbytestpackage.git")
     let
-      repoPath = expandTilde("~/.nimby/pkgs/nimbytestpackage")
+      repoPath = nimbyHome / "pkgs" / "nimbytestpackage"
       present = rewindPackage(repoPath, "HEAD^")
 
     cmd("nimby update nimbytestpackage")
@@ -442,7 +489,7 @@ suite "`nimby update` should":
     cmd("nimby install -g https://github.com/treeform/bitty.git")
     cmd("nimby install https://github.com/RowDaBoat/nimbytestpackage.git")
     let
-      bittyPath = expandTilde("~/.nimby/pkgs/bitty")
+      bittyPath = nimbyHome / "pkgs" / "bitty"
       ntpPath = "nimbytestpackage"
       bittyPresent = rewindPackage(bittyPath, "HEAD^", "master")
       ntpPresent = rewindPackage(ntpPath, "HEAD^")
@@ -459,7 +506,7 @@ suite "`nimby update` should":
 suite "`nimby doctor` should":
   setup:
     setupTestPackages()
-    clean()
+    setupEnvironment()
 
   test "fail when no workspace exists":
     let output = cmdFail("nimby doctor")
@@ -549,3 +596,17 @@ suite "`nimby doctor` should":
     let output = cmdAt(nested, "nimby doctor")
     check output.contains("stray/")
     check output.contains("not linked in nim.cfg")
+
+suite "NIMBY_HOME environment variable":
+  setup:
+    setupTestPackages()
+    setupEnvironment()
+
+  test "global install with -g uses NIMBY_HOME when set":
+    let customHome = getTempDir() / "nimby_custom_home"
+    removeDir(customHome)
+    putEnv("NIMBY_HOME", customHome)
+    cmd("nimby create")
+    cmd("nimby install -g -V mummy")
+    putEnv("NIMBY_HOME", nimbyHome)
+    check dirExists(customHome / "pkgs" / "mummy")

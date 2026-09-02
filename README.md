@@ -267,7 +267,7 @@ nimby help
 ```output
 Usage: nimby <subcommand> [options]
   ~ Minimal package manager for Nim. ~
-    -g, --global Install packages in the ~/.nimby/pkgs directory
+    -g, --global Install packages in the global packages directory (~/.nimby unless NIMBY_HOME is set)
     -v, --version print the version of Nimby
     -h, --help show this help message
     -V, --verbose print verbose output
