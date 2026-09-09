@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.2.2
+
+### Added
+
+#### `NIMBY_HOME` picks where Nimby lives
+
+Nimby's home directory (where `nimby use` installs Nim and where global
+packages go) used to be hard-coded to `~/.nimby`. It can now be set with the
+`NIMBY_HOME` environment variable. The value is tilde-expanded and turned into
+an absolute path, and paths with spaces work. The build commands honor it too.
+
+Contributed by RowDaBoat.
+
+#### `nimby doctor` checks a lot more
+
+`nimby doctor` now reports missing dependencies, `nim.cfg` linking and
+format problems, packages that are listed but not on disk, and orphan
+directories that are on disk but not linked. Every finding comes with a
+suggested fix.
+
+Contributed by RowDaBoat.
+
+#### `nimby r`
+
+The `r` command that was documented but missing is back.
+
+### Changed
+
+#### Nim 2.2.12 is the default
+
+The README examples, the CI workflows, and the test suite now target Nim
+2.2.12. Binary distributions are published at
+https://github.com/treeform/nimby-nim-builds/releases/tag/2.2.12.
+
+### Fixed
+
+- The compiler subcommands (`nimby c`, `nimby r`, and friends) now fail with a
+  clear error when Nimby has no Nim set up instead of failing later inside
+  the compiler. This check works on Windows too.
+- The test suite sets up its own Nim with `nimby use` inside an isolated
+  `NIMBY_HOME`, so running the tests no longer touches your real `~/.nimby`
+  or the local workspace.
+
 ## 0.2.1
 
 ### Fixed

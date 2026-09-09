@@ -41,7 +41,7 @@ proc setupEnvironment(installNim: bool = true) =
   removeDir(nimbyHome / "pkgs")
   putEnv("NIMBY_HOME", nimbyHome)
   if installNim:
-    cmd("nimby use 2.2.10")
+    cmd("nimby use 2.2.12")
   removeDir(testWorkspace)
   createDir(testWorkspace)
   setCurrentDir(testWorkspace)
@@ -52,7 +52,7 @@ suite "`nimby use` should":
     setupEnvironment(installNim = false)
 
   test "install nim into NIMBY_HOME":
-    cmd("nimby use 2.2.10")
+    cmd("nimby use 2.2.12")
     check fileExists(nimbyHome / "nim" / "bin" / addFileExt("nim", ExeExt))
 
   test "fail when nim is not installed":
@@ -160,7 +160,7 @@ suite "`nimby install` should":
     let spacedHome = getTempDir() / "nimby home with spaces"
     removeDir(spacedHome)
     putEnv("NIMBY_HOME", spacedHome)
-    cmd("nimby use 2.2.10")
+    cmd("nimby use 2.2.12")
     cmd("nimby install -g -V mummy")
     check dirExists(spacedHome / "pkgs" / "mummy")
     removeDir(spacedHome)
@@ -424,7 +424,7 @@ suite "`nimby c` should":
     let spacedHome = getTempDir() / "nimby home with spaces"
     removeDir(spacedHome)
     putEnv("NIMBY_HOME", spacedHome)
-    cmd("nimby use 2.2.10")
+    cmd("nimby use 2.2.12")
     cmd("nimby create")
     createTestPackage("myapp")
     cmd(&"nimby install file://{testPackagesDir}/myapp")

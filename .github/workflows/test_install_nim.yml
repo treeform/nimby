@@ -33,7 +33,7 @@ jobs:
 
       - name: Install Nim Compiler
         shell: bash
-        run: src/nimby use -V 2.2.10
+        run: src/nimby use -V 2.2.12
 
       - name: Print Nimby Folder
         shell: bash

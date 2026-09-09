@@ -16,7 +16,7 @@ It keeps things honest, transparent, and lightning fast.
 ```sh skip
 curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.1/nimby-Linux-X64
 chmod +x nimby
-./nimby use 2.2.10
+./nimby use 2.2.12
 ./nimby create
 ./nimby install libraryA libraryB libraryC
 ./nimby lock library > library/nimby.lock
@@ -127,7 +127,7 @@ The global option works for both `nimby install -g` and, even more importantly, 
 
 Yeah, installing Nim is actually pretty easy. You just copy a couple of folders, put them in the right place, and add `~/.nimby/nim/bin` to your system path. That's it.
 
-I think it's a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system, `curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.1/nimby-Linux-X64`, and that's all you need. Then you run `./nimby use 2.2.10` with the Nim version you want, and `./nimby sync your/nimby.lock` with your lock file.
+I think it's a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system, `curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.1/nimby-Linux-X64`, and that's all you need. Then you run `./nimby use 2.2.12` with the Nim version you want, and `./nimby sync your/nimby.lock` with your lock file.
 
 This works perfectly for CI workflows, deployments, or any situation where you're starting with a blank machine. You don't need to install anything else. Nimby downloads Nim, installs your packages, and you're ready to go.
 
@@ -171,7 +171,7 @@ nimble install nimby
 Nimby can install Nim itself into `~/.nimby/nim`:
 
 ```sh skip
-nimby use 2.2.10
+nimby use 2.2.12
 ```
 
 `nimby use <version>` downloads that Nim version and makes it the active Nim
