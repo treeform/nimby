@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.3
+
+### Fixed
+
+#### 0.2.2 installed into the current directory
+
+0.2.2 introduced `NIMBY_HOME`, but when the variable was *not* set Nimby's
+home resolved to the current working directory instead of `~/.nimby`. So
+`nimby use` and `nimby install -g` put Nim and global packages wherever you
+happened to be standing. Every Nim distribution rebuilt with 0.2.2 bundled
+that Nimby.
+
+0.2.3 fixes the fallback. Do not use 0.2.2; the download links below point at
+0.2.3 and the Nim distributions have been rebuilt with it.
+
 ## 0.2.2
 
 ### Added

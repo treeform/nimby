@@ -14,7 +14,7 @@ It keeps things honest, transparent, and lightning fast.
 ## Quick Start
 
 ```sh skip
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.2/nimby-Linux-X64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.1/nimby-Linux-X64
 chmod +x nimby
 ./nimby use 2.2.12
 ./nimby create
@@ -127,7 +127,7 @@ The global option works for both `nimby install -g` and, even more importantly, 
 
 Yeah, installing Nim is actually pretty easy. You just copy a couple of folders, put them in the right place, and add `~/.nimby/nim/bin` to your system path. That's it.
 
-I think it's a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system, `curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.2/nimby-Linux-X64`, and that's all you need. Then you run `./nimby use 2.2.12` with the Nim version you want, and `./nimby sync your/nimby.lock` with your lock file.
+I think it's a great addition to have in Nimby because it makes setup incredibly simple. You can just curl the Nimby binary for your system, `curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.1/nimby-Linux-X64`, and that's all you need. Then you run `./nimby use 2.2.12` with the Nim version you want, and `./nimby sync your/nimby.lock` with your lock file.
 
 This works perfectly for CI workflows, deployments, or any situation where you're starting with a blank machine. You don't need to install anything else. Nimby downloads Nim, installs your packages, and you're ready to go.
 
@@ -137,25 +137,25 @@ This works perfectly for CI workflows, deployments, or any situation where you'r
 
 ### macOS ARM64
 ```sh skip
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.2/nimby-macOS-ARM64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.1/nimby-macOS-ARM64
 chmod +x nimby
 ```
 
 ### Linux X64
 ```sh skip
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.2/nimby-Linux-X64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.1/nimby-Linux-X64
 chmod +x nimby
 ```
 
 ### Linux ARM64
 ```sh skip
-curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.2/nimby-Linux-ARM64
+curl -L -o nimby https://github.com/treeform/nimby/releases/download/0.2.1/nimby-Linux-ARM64
 chmod +x nimby
 ```
 
 ### Windows
 ```sh skip
-curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/0.2.2/nimby-Windows-X64.exe
+curl -L -o nimby.exe https://github.com/treeform/nimby/releases/download/0.2.1/nimby-Windows-X64.exe
 ```
 
 ### Nimble

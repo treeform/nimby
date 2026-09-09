@@ -39,6 +39,15 @@ jobs:
         shell: bash
         run: ls "$HOME/.nimby"
 
+      - name: Check Nim was installed into Nimby's home
+        shell: bash
+        run: |
+          # setup-nim-action already put a Nim in $HOME/.nimby/nim, so listing
+          # that proves nothing. The versioned folder only exists if nimby use
+          # resolved its home to $HOME/.nimby and not the working directory.
+          test -d "$HOME/.nimby/nim-2.2.12"
+          test ! -d "nim-2.2.12"
+
       - name: Print Nimby nim folder
         shell: bash
         run: ls "$HOME/.nimby/nim"

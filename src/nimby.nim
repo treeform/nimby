@@ -86,10 +86,12 @@ proc print(message: string) =
     echo message
 
 proc getGlobalNimbyDir(): string =
+  ## Get Nimby's home directory: ~/.nimby unless NIMBY_HOME is set.
   let env = getEnv("NIMBY_HOME")
   if env.len == 0:
-   result = "~/.nimby".expandTilde()
-  result = env.expandTilde().absolutePath()
+    "~/.nimby".expandTilde()
+  else:
+    env.expandTilde().absolutePath()
 
 proc getGlobalPackagesDir(): string =
   ## Get the global packages directory.
@@ -277,7 +279,7 @@ proc timeEnd() =
 
 proc writeVersion() =
   ## Print the version of Nimby.
-  print "Nimby 0.2.2"
+  print "Nimby 0.2.3"
 
 proc writeHelp() =
   ## Show the help message.
