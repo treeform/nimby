@@ -79,10 +79,11 @@ Other places Nimby's version is referenced, all of which have to move too:
 ## Nim distributions that must be rebuilt
 
 Every published release in `treeform/nimby-nim-builds` carries a Nimby binary.
-As of 2026-08-23 that is six releases:
+As of 2026-09-08 that is seven releases:
 
 | Nim version | Release date |
 | --- | --- |
+| `2.2.12` | 2026-09-08 |
 | `2.2.10` | 2026-05-24 |
 | `2.2.8` | 2026-02-23 |
 | `2.2.6` | 2026-01-31 |
@@ -96,8 +97,8 @@ Regenerate this list before starting. Do not trust the table above:
 gh release list --repo treeform/nimby-nim-builds --limit 50
 ```
 
-Rebuild in newest-first order: `2.2.10`, then `2.2.8`, `2.2.6`, `2.2.4`,
-`2.2.2`, `2.0.16`. Newest first because `2.2.10` is what
+Rebuild in newest-first order: `2.2.12`, then `2.2.10`, `2.2.8`, `2.2.6`,
+`2.2.4`, `2.2.2`, `2.0.16`. Newest first because `2.2.12` is what
 `setup-nim-action` defaults to and what Nimby's own CI consumes, so a problem
 there should stop the process before five more builds burn CI time.
 
@@ -239,6 +240,21 @@ Platform-specific notes:
   Nimby release build taking many minutes on any platform is unusual.
 - Release upload jobs should finish in seconds once artifacts are built.
 
+## Runbook Gotchas From 2026-09-08 (Nimby 0.2.2 and 0.2.3)
+
+- 0.2.2 was released, baked into all seven distributions, and only then found
+  to install into the current directory when `NIMBY_HOME` was unset. The fix
+  was 0.2.3 and a second full rebuild pass. See the matching gotchas section
+  in [`new_nim_process.md`](new_nim_process.md) for what was learned about
+  which tests actually gate this.
+- Before creating the release, read the `Installed Nim ... to:` line in the
+  `Test install Nim` run for the release commit. It builds Nimby from
+  `master`, so it shows where the *new* code installs things.
+- All seven rebuilds were dispatched at once and finished in about 15
+  minutes. Parallel is fine; keep the run IDs in a file.
+- Phase 3's `setup-nim-action` re-test does not need `v6` to move unless
+  `action.yml` changed. An empty commit on `master` is enough.
+
 ## Phase 1: Release the new Nimby
 
 Repo: `C:/p/nimby`
@@ -320,7 +336,7 @@ version edits.
    'release'`. A manual dispatch builds the binaries and uploads nothing. Use a
    pushed tag or a published GitHub release for the real release.
 
-   **Expect two runs, not one.** The workflow triggers on both
+   **Historical note, fixed before 0.2.2:** the workflow used to trigger on both
    `release: types: [published]` and `push: tags: ["*"]`, so a single
    `gh release create` starts two runs that build the same artifacts and upload
    the same asset names concurrently. On the 0.2.0 release both finished

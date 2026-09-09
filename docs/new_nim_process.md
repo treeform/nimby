@@ -14,6 +14,16 @@ Use placeholders in this document until the real release is ready:
 
 Commands are written so they can be pasted into PowerShell from `C:\p`.
 
+**A Nim bump is also a Nimby release.** Repo 3 below bumps the Nimby version,
+and every Nim distribution bundles whatever Nimby `master` held when it was
+built. So the `<nim-version>` distribution built in Repo 1 carries the *old*
+Nimby, and so do all the older distributions. After the Nimby release exists
+(Repo 3 step 5) and before the README/`NIMBY_VERSION` push (Repo 3 step 6),
+run Phase 2 of [`new_nimby_process.md`](new_nimby_process.md): rebuild every
+published distribution, including the one you just made, and read the
+`Print Nimby version` output of each `Test` run. Phase 2 requires Nimby
+`master` to still equal the release tag, which is why step 6 has to wait.
+
 Every step is gated. If any command, workflow, release, or asset check fails,
 stop immediately, save the run URL or error output, inspect the failed logs, and
 do not move to the next repo until the failure is understood.
@@ -149,6 +159,42 @@ Platform-specific notes:
   release build takes many minutes on any platform, that is unusual.
 - Release upload jobs should usually finish in seconds once all artifacts are
   built. If the upload job is stuck for several minutes, inspect it.
+
+## Runbook Gotchas From 2026-09-08 (Nim 2.2.12, Nimby 0.2.2 and 0.2.3)
+
+- The whole thing took about 2.5 hours of wall clock, most of it the two
+  full rebuild passes described below. Budget for that, not for the 45
+  minutes the Nim-only steps take.
+- **Nimby 0.2.2 shipped broken and had to be rolled forward to 0.2.3.** The
+  new `NIMBY_HOME` code fell through when the variable was unset and resolved
+  Nimby's home to the current directory. The test suite sets `NIMBY_HOME`
+  everywhere, so `Test` was green. `Test install Nim` was green too, because
+  it only listed `$HOME/.nimby`, which `setup-nim-action` had already
+  populated. Only `Test setup Nim from nothing.` caught it, and only on the
+  final push that pointed `NIMBY_VERSION` at the new release. Lessons:
+  - `Test setup Nim from nothing.` is the real end-to-end gate. Read its
+    `Installed Nim ... to:` line and make sure the path is under the home
+    directory, not the checkout.
+  - `Test install Nim` now has a `Check Nim was installed into Nimby's home`
+    step that asserts the versioned folder landed in `$HOME/.nimby` and not
+    the working directory. Keep it.
+  - Any change to `getGlobalNimbyDir` needs a test with `NIMBY_HOME` unset.
+- When a Nimby release turns out to be broken after the distributions were
+  rebuilt, the recovery is: fix on `master`, bump to the next patch version,
+  set README links and `NIMBY_VERSION` back to the last *good* release for
+  the interim commit so every push stays green, release, rebuild all
+  distributions again, then do Phase 3 against the new version. Mark the bad
+  release as a pre-release with a warning in its notes so it loses the
+  `Latest` badge.
+- `release.yml` in Nimby now triggers only on `release: published`, so one
+  `gh release create` starts exactly one run. The double-trigger note in the
+  Nimby process is historical.
+- Dispatching all seven distribution rebuilds at once worked fine and took
+  about 15 minutes total instead of 100. Keep the list of run IDs in a file.
+- `jq` is not reliably on `PATH` in Git Bash on this machine. Use
+  `gh ... --jq` instead of piping through `jq`.
+- `test.yml` and `test_release.yml` in `nimby-nim-builds` now both default to
+  the current release. Bump both when the Nim version moves.
 
 ## Runbook Gotchas From 2026-05-24
 
