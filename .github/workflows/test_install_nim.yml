@@ -33,7 +33,7 @@ jobs:
 
       - name: Install Nim Compiler
         shell: bash
-        run: src/nimby use -V 2.2.12
+        run: src/nimby use -V 2.4.0
 
       - name: Print Nimby Folder
         shell: bash
@@ -45,8 +45,8 @@ jobs:
           # setup-nim-action already put a Nim in $HOME/.nimby/nim, so listing
           # that proves nothing. The versioned folder only exists if nimby use
           # resolved its home to $HOME/.nimby and not the working directory.
-          test -d "$HOME/.nimby/nim-2.2.12"
-          test ! -d "nim-2.2.12"
+          test -d "$HOME/.nimby/nim-2.4.0"
+          test ! -d "nim-2.4.0"
 
       - name: Print Nimby nim folder
         shell: bash
